@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Quant Strategy Dashboard (Vue Version)</title>
+
+    <!-- Import Vue.js -->
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.4.0/dist/vue.global.prod.js"></script>
+
+    <!-- Import Element Plus -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2.4.0/dist/index.css">
+    <script src="https://cdn.jsdelivr.net/npm/element-plus@2.4.0/dist/index.full.min.js"></script>
+
+    <!-- Import ECharts -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+
+    <style>
+        body {
+            background: #f0f2f5;
+            padding: 24px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+            margin-bottom: 24px;
+        }
+        .section-title {
+            margin-bottom: 16px;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        #chart-main {
+            width: 100%;
+            height: 600px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <!-- Control Panel -->
+    <div class="card">
+        <div style="display: flex; gap: 24px;">
+            <div style="flex: 1;">
+                <label>股票代码 (Symbol)</label>
+                <el-select 
+                    v-model="selectedSymbol" 
+                    placeholder="选择代码" 
+                    @change="updateChart"
+                    style="width: 100%"
+                >
+                    <el-option 
+                        v-for="sym in symbols" 
+                        :key="sym" 
+                        :label="sym" 
+                        :value="sym"
+                    />
+                </el-select>
+            </div>
+            <div style="flex: 1;">
+                <label>交易策略 (Strategy)</label>
+                <el-select 
+                    v-model="selectedStrategy" 
+                    placeholder="选择策略" 
+                    @change="updateChart"
+                    style="width: 100%"
+                >
+                    <el-option 
+                        v-for="strat in strategies" 
+                        :key="strat" 
+                        :label="strat" 
+                        :value="strat"
+                    />
+                </el-select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart Section -->
+    <div class="card">
+        <div class="section-title">价格走势与成交量</div>
+        <div id="chart-main"></div>
+    </div>
+
+    <!-- Performance Table Section -->
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="margin: 0">策略表现排名</h3>
+            <el-input
+                v-model="tableSearch"
+                placeholder="输入 Symbol 过滤表格..."
+                style="width: 100%; max-width: 240px;" <!-- Updated max-width -->
+                prefix-icon="Search"
+                clearable
+            />
+        </div>
+        <el-table 
+            :data="filteredPerfData" 
+            stripe 
+            style="width: 100%" 
+            height="300" 
+            :default-sort="{ prop: 'symbol', order: 'ascending' }"
+        >
+            <!-- Fixed Symbol Column -->
+            <el-table-column 
+                prop="symbol" 
+                label="Symbol" 
+                sortable 
+                width="120" 
+            />
+
+            <!-- Dynamic Strategy Columns -->
+            <el-table-column 
+                v-for="st in strategies" 
+                :key="st" 
+                :prop="st" 
+                :label="st" 
+                sortable
+            >
+                <template #default="scope">
+                    <span :style="{ color: scope.row[st] >= 0 ? '#f56c6c' : '#67c23a', fontWeight: 'bold' }">
+                        {{ (scope.row[st] * 100).toFixed(2) }}%
+                    </span>
+                </template>
+            </el-table-column>
+        </el-table>
+    </div>
+</div>
+
+<script>
+    const { createApp, ref, computed, onMounted } = Vue;
+
+    createApp({
+        setup() {
+            const selectedSymbol = ref('');
+            const selectedStrategy = ref('');
+            const tableSearch = ref(''); // 表格搜索关键词
+            const symbols = ref([]);
+            const strategies = ref([]);
+            const perfData = ref([]); // 原始表格数据
+            let rawData = [];
+            let chartInstance = null;
+
+            // --- 计算属性：实现表格实时筛选 ---
+            const filteredPerfData = computed(() => {
+                return perfData.value.filter(data =>
+                    !tableSearch.value || 
+                    data.symbol.toLowerCase().includes(tableSearch.value.toLowerCase())
+                );
+            });
+
+            const initChart = () => {
+                chartInstance = echarts.init(document.getElementById('chart-main'));
+                window.addEventListener('resize', () => chartInstance.resize());
+            };
+
+            const updateChart = () => {
+                const filtered = rawData.filter(d => d.symbol === selectedSymbol.value && d.strategy === selectedStrategy.value);
+                const dates = filtered.map(d => d.date);
+                const prices = filtered.map(d => d.close);
+                const volumes = filtered.map(d => d.volume);
+                const signals = filtered.filter(d => d.buy_signal === 1).map(d => [d.date, d.close]);
+
+                const option = {
+                    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+                    grid: [
+                        { left: '50px', right: '30px', height: '65%', top: '10%' },
+                        { left: '50px', right: '30px', top: '80%', height: '12%' }
+                    ],
+                    xAxis: [
+                        { type: 'category', data: dates, gridIndex: 0, axisLabel: { show: false } },
+                        { type: 'category', data: dates, gridIndex: 1 }
+                    ],
+                    yAxis: [
+                        { scale: true, gridIndex: 0, splitLine: { lineStyle: { type: 'dashed' } } },
+                        { scale: true, gridIndex: 1, splitNumber: 2, axisLabel: { fontSize: 10 } }
+                    ],
+                    dataZoom: [{ type: 'inside', xAxisIndex: [0, 1] }, { type: 'slider', xAxisIndex: [0, 1], bottom: '10' }],
+                    series: [
+                        { name: 'Price', type: 'line', data: prices, smooth: true, itemStyle: { color: '#409eff' } },
+                        { name: 'Buy', type: 'scatter', data: signals, symbol: 'pin', symbolSize: 15, itemStyle: { color: '#f56c6c' } },
+                        { name: 'Vol', type: 'bar', data: volumes, xAxisIndex: 1, yAxisIndex: 1, itemStyle: { color: '#909399' } }
+                    ]
+                };
+                chartInstance.setOption(option, true);
+            };
+
+            onMounted(() => {
+                window.addEventListener('pywebviewready', async () => {
+                    const res = await pywebview.api.init_data();
+                    rawData = res.main_data;
+                    perfData.value = res.perf_data;
+
+                    // 获取 symbol 和 strategy 列表
+                    symbols.value = [...new Set(rawData.map(d => d.symbol))];
+                    // 从 perfData 的 key 中提取策略名（排除 symbol 列）
+                    strategies.value = Object.keys(perfData.value[0]).filter(k => k !== 'symbol');
+                    
+                    selectedSymbol.value = symbols.value[0];
+                    selectedStrategy.value = strategies.value[0];
+
+                    initChart();
+                    updateChart();
+                });
+            });
+
+            return { 
+                selectedSymbol, selectedStrategy, tableSearch,
+                symbols, strategies, perfData, filteredPerfData, 
+                updateChart 
+            };
+        }
+    }).use(ElementPlus).mount('#app');
+</script>
+
+</body>
+</html>

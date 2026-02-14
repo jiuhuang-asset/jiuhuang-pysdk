@@ -8,6 +8,12 @@ dependencies = [
     "dotenv>=0.9.9",
     "duckdb>=1.4.4",
     "httpx>=0.28.1",
+    "mplfinance>=0.12.10b0",
     "pandas>=2.3.3",
+    "pywebview>=6.1",
     "rich>=14.3.2",
 ]
+
+
+[tool.setuptools.package-data]
+jiuhuang = ["front_src/*.html"] # Include all .html files in front_src
