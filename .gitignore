@@ -22,3 +22,6 @@ dist/
 
 # uv
 .uv/
+
+
+docs/
