@@ -19,6 +19,9 @@
         .filter-label { font-weight: 500; color: #555; font-size: 14px; }
         #chart-container { width: 100%; height: 600px; }
         .section-title { margin-bottom: 16px; font-size: 18px; font-weight: 600; }
+        .ma-switch .ant-switch {
+            width: 50px !important;
+        }
     </style>
 </head>
 <body>
@@ -26,7 +29,7 @@
 <div id="root"></div>
 
 <script type="text/javascript">
-    const { Select, Space, Row, Col, Card } = window.antd;
+    const { Select, Switch, Space, Row, Col, Card } = window.antd;
     let myChart = null;
     let rawData = [];
     let perfData = [];
@@ -37,6 +40,8 @@
         const [strategies, setStrategies] = React.useState([]);
         const [selectedSymbol, setSelectedSymbol] = React.useState(null);
         const [selectedStrategy, setSelectedStrategy] = React.useState(null);
+        const [maEnabled, setMaEnabled] = React.useState(false);
+        const [maPeriods, setMaPeriods] = React.useState([12]); // Default to 12-day MA
 
         React.useEffect(() => {
             window.addEventListener('pywebviewready', async () => {
@@ -46,13 +51,13 @@
 
                 const syms = [...new Set(rawData.map(d => d.symbol))];
                 const strats = [...new Set(rawData.map(d => d.strategy))];
-                
+
                 setSymbols(syms.map(s => ({ value: s, label: s })));
                 setStrategies(strats.map(s => ({ value: s, label: s })));
-                
+
                 setSelectedSymbol(syms[0]);
                 setSelectedStrategy(strats[0]);
-                
+
                 initChart();
                 updateGridTable();
             });
@@ -60,13 +65,13 @@
 
         React.useEffect(() => {
             if (selectedSymbol && selectedStrategy) {
-                refreshChart(selectedSymbol, selectedStrategy);
+                refreshChart(selectedSymbol, selectedStrategy, maEnabled, maPeriods);
             }
-        }, [selectedSymbol, selectedStrategy]);
+        }, [selectedSymbol, selectedStrategy, maEnabled, maPeriods]);
 
-        return React.createElement(Card, { className: "card" }, 
+        return React.createElement(Card, { className: "card" },
             React.createElement(Row, { gutter: 24 }, [
-                React.createElement(Col, null, 
+                React.createElement(Col, null,
                     React.createElement('div', { className: "filter-item" }, [
                         React.createElement('span', { className: "filter-label" }, "股票代码 (Symbol)"),
                         React.createElement(Select, {
@@ -79,7 +84,7 @@
                         })
                     ])
                 ),
-                React.createElement(Col, null, 
+                React.createElement(Col, null,
                     React.createElement('div', { className: "filter-item" }, [
                         React.createElement('span', { className: "filter-label" }, "交易策略 (Strategy)"),
                         React.createElement(Select, {
@@ -88,6 +93,33 @@
                             value: selectedStrategy,
                             onChange: setSelectedStrategy,
                             options: strategies,
+                            style: { width: 200 }
+                        })
+                    ])
+                ),
+                React.createElement(Col, null,
+                    React.createElement('div', { className: "filter-item" }, [
+                        React.createElement('span', { className: "filter-label" }, "添加均线"),
+                        React.createElement(Switch, {
+                            style: { width: '60px' },
+                            checked: maEnabled,
+                            onChange: setMaEnabled
+                        })
+                    ])
+                ),
+                maEnabled && React.createElement(Col, null,
+                    React.createElement('div', { className: "filter-item" }, [
+                        React.createElement('span', { className: "filter-label" }, "MA周期"),
+                        React.createElement(Select, {
+                            mode: 'multiple', // Enable multi-select
+                            placeholder: "选择均线周期",
+                            value: maPeriods,
+                            onChange: setMaPeriods,
+                            options: [
+                                { value: 12, label: '12天' },
+                                { value: 24, label: '24天' },
+                                { value: 48, label: '48天' }
+                            ],
                             style: { width: 200 }
                         })
                     ])
@@ -102,48 +134,137 @@
         window.addEventListener('resize', () => myChart.resize());
     }
 
-    function refreshChart(symbol, strategy) {
-        const data = rawData.filter(d => d.symbol === symbol && d.strategy === strategy);
-        const dates = data.map(d => d.date);
-        const prices = data.map(d => d.close);
-        const volumes = data.map(d => d.volume || Math.random() * 1000); // 备选模拟量
-        const buys = data.filter(d => d.buy_signal === 1).map(d => [d.date, d.close]);
+    function refreshChart(symbol, strategy, maEnabled, maPeriods) {
+    const data = rawData.filter(d => d.symbol === symbol && d.strategy === strategy);
+    const dates = data.map(d => d.date);
+    const prices = data.map(d => d.close);
+    const volumes = data.map(d => d.volume || Math.random() * 1000);
 
-        const option = {
-            animation: false,
-            tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
-            // 定义两个网格：上下排布
-            grid: [
-                { left: '5%', right: '5%', height: '60%', top: '10%' }, // 主图
-                { left: '5%', right: '5%', top: '75%', height: '15%' }  // 子图
-            ],
-            xAxis: [
-                { type: 'category', data: dates, gridIndex: 0, axisLabel: { show: false } },
-                { type: 'category', data: dates, gridIndex: 1 }
-            ],
-            yAxis: [
-                { scale: true, gridIndex: 0, name: 'Price' },
-                { scale: true, gridIndex: 1, name: 'Vol', splitNumber: 2 }
-            ],
-            series: [
-                { name: 'Price', type: 'line', data: prices, xAxisIndex: 0, yAxisIndex: 0, smooth: true },
-                { 
-                    name: 'Buy Signal', type: 'scatter', data: buys, 
-                    xAxisIndex: 0, yAxisIndex: 0, symbol: 'triangle', symbolSize: 12, itemStyle: { color: '#f5222d' } 
-                },
-                { name: 'Volume', type: 'bar', data: volumes, xAxisIndex: 1, yAxisIndex: 1, itemStyle: { color: '#1890ff' } }
-            ],
-            // 联动缩放
-            dataZoom: [{ type: 'inside', xAxisIndex: [0, 1] }, { type: 'slider', xAxisIndex: [0, 1] }]
+    // Calculate MAs for each selected period
+    const maSeries = [];
+    if (maEnabled && maPeriods.length > 0) {
+        maPeriods.forEach(period => {
+            const maValues = calculateMA(prices, period);
+            maSeries.push({
+                name: `MA${period}`,
+                type: 'line', // Line chart for MA
+                data: maValues,
+                xAxisIndex: 0,
+                yAxisIndex: 0,
+                smooth: true,
+                lineStyle: { color: getColorForPeriod(period) } // Assign different colors
+            });
+        });
+    }
+
+    // Process signals
+    const signals = data.map(d => {
+        if (d.buy_signal === 1) return { date: d.date, value: d.close, type: 'buy' };
+        if (d.sell_signal === 1) return { date: d.date, value: d.close, type: 'sell' };
+        return null;
+    }).filter(signal => signal !== null);
+
+    const buySignals = signals.filter(s => s.type === 'buy').map(s => [s.date, s.value]);
+    const sellSignals = signals.filter(s => s.type === 'sell').map(s => [s.date, s.value]);
+
+    const option = {
+        animation: false,
+        tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+        legend: {
+            data: ['Price', ...maSeries.map(series => series.name), '买入', '卖出'],
+            top: 'top'
+        },
+        grid: [
+            { left: '5%', right: '5%', height: '60%', top: '10%' },
+            { left: '5%', right: '5%', top: '75%', height: '15%' }
+        ],
+        xAxis: [
+            { type: 'category', data: dates, gridIndex: 0, axisLabel: { show: false } },
+            { type: 'category', data: dates, gridIndex: 1 }
+        ],
+        yAxis: [
+            { scale: true, gridIndex: 0, name: 'Price' },
+            { scale: true, gridIndex: 1, name: 'Vol', splitNumber: 2 }
+        ],
+        series: [
+            {
+                name: 'Price',
+                type: 'line',
+                data: prices,
+                xAxisIndex: 0,
+                yAxisIndex: 0,
+                smooth: true
+            },
+            ...maSeries, // Add all MA series as line charts
+            {
+                name: '买入',
+                type: 'scatter',
+                data: buySignals,
+                xAxisIndex: 0,
+                yAxisIndex: 0,
+                symbol: 'triangle',
+                symbolRotate: 180,
+                symbolSize: 14,
+                itemStyle: { color: '#52c41a' }
+            },
+            {
+                name: '卖出',
+                type: 'scatter',
+                data: sellSignals,
+                xAxisIndex: 0,
+                yAxisIndex: 0,
+                symbol: 'triangle',
+                symbolRotate: 0,
+                symbolSize: 14,
+                itemStyle: { color: '#ff4d4f' }
+            },
+            {
+                name: 'Volume',
+                type: 'bar',
+                data: volumes,
+                xAxisIndex: 1,
+                yAxisIndex: 1,
+                itemStyle: { color: '#1890ff' }
+            }
+        ],
+        dataZoom: [{ type: 'inside', xAxisIndex: [0, 1] }, { type: 'slider', xAxisIndex: [0, 1] }]
+    };
+    myChart.setOption(option, true);
+}
+
+    // Helper function to calculate Moving Average
+    function calculateMA(data, period) {
+        const result = [];
+        for (let i = 0; i < data.length; i++) {
+            if (i < period - 1) {
+                result.push('-');
+            } else {
+                const sum = data.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0);
+                result.push(sum / period);
+            }
+        }
+        return result;
+    }
+
+    // Helper function to assign colors to MA lines
+    function getColorForPeriod(period) {
+        const colors = {
+            12: '#faad14', // Orange
+            24: '#1890ff', // Blue
+            48: '#52c41a'  // Green
         };
-        myChart.setOption(option, true);
+        return colors[period] || '#000000'; // Default to black
     }
 
     // --- Grid.js 表格 ---
     function updateGridTable() {
+        const allKeys = perfData.length > 0 ? Object.keys(perfData[0]).filter(key => key !== 'symbol') : [];
+        const columns = ['Symbol', ...allKeys];
+        const data = perfData.map(d => [d.symbol, ...allKeys.map(key => d[key])]);
+
         new gridjs.Grid({
-            columns: ['Symbol', 'Turtle', 'SMA', 'Mean_Reversion'],
-            data: perfData.map(d => [d.symbol, d.turtle, d.sma, d.mean_reversion]),
+            columns: columns,
+            data: data,
             sort: true,
             pagination: { limit: 10 },
             search: true
@@ -165,7 +286,6 @@
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(React.createElement(App));
-
 </script>
 </body>
 </html>

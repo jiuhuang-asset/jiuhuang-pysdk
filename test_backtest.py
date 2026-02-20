@@ -67,21 +67,10 @@ def main():
         stamp_tax_rate=0,
         use_next_day_return=True,
     )
-    print(plot_data)
-    print(backtest_result_df)
+    # breakpoint()
 
+    # display_backtesting(plot_data, backtest_result_df)
 
-
-    display_backtesting(plot_data, backtest_result_df)
-
-
-    # facet_plot(plot_data,
-    #     strategy_names=list(strategies.keys()),
-    #      symbol="300750",
-    #      cols=2,
-    #      bt_result=backtest_result_df,
-    #      volume=True,
-    #     )
 
 
 if __name__ == "__main__":

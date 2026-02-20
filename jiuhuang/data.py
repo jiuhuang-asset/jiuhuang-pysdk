@@ -21,7 +21,12 @@ load_dotenv()
 
 __all__ = ["JiuhuangData"]
 
-_CACHE_TABLES = {"stock_zh_a_hist_d": ["symbol", "date"]}
+_CACHE_TABLES = {"stock_zh_a_hist_d": ["symbol", "date"],
+                 "stock_individual_info_em": ["symbol"],
+                 "stock_zcfz_em":["date", "symbol"],
+                 "stock_lrb_em":["date", "symbol"],
+                 "stock_xjll_em":["date", "symbol"],
+                 }
 
 
 class JiuhuangData:
@@ -133,8 +138,8 @@ class JiuhuangData:
                 data_type, symbol=symbol, start_date=start_date, end_date=end_date, **kw
             )
 
-        if not data.empty:
-            return data
+            if not data.empty:
+                return data
 
         url = f"{self.api_url}/data-offline/"
         payload = {
@@ -165,7 +170,9 @@ class _DataCache:
         self.cache_dir = os.path.expanduser("~/.jiuhuang")
         self.cache_db_path = os.path.join(self.cache_dir, "cache_data.db")
         self._jd = jd
+        self._table_fields = {}
         self._initialize_cache()
+
 
     def _initialize_cache(self):
         os.makedirs(self.cache_dir, exist_ok=True)
@@ -182,22 +189,32 @@ class _DataCache:
             if resp.status_code == 200:
                 ddl = resp.json()["data"]
                 conn.execute(ddl)
+
+            resp = self._jd._client.get(
+                self._jd.api_url + "/data-offline/table_fields",
+                params={"data_type": t},
+            )
+            if resp.status_code == 200:
+                fields = resp.json()["data"]
+                self._table_fields.update({t: fields})
         conn.close()
+
 
     def get_data(self, data_type, **kwargs):
         table_name = data_type
+        table_fields = self._table_fields[table_name]    
         if table_name not in _CACHE_TABLES:
             return pd.DataFrame()
 
         sql = f"SELECT * FROM {table_name} WHERE 1=1"
 
-        if "start_date" in kwargs and kwargs["start_date"]:
+        if "start_date" in kwargs and kwargs["start_date"] and "date" in table_fields:
             sql += f" AND date >= '{kwargs['start_date']}'"
 
-        if "end_date" in kwargs and kwargs["end_date"]:
+        if "end_date" in kwargs and kwargs["end_date"] and "date" in table_fields:
             sql += f" AND date <= '{kwargs['end_date']}'"
 
-        if "symbol" in kwargs and kwargs["symbol"]:
+        if "symbol" in kwargs and kwargs["symbol"] and "symbol" in table_fields:
             sql += f" AND symbol = '{kwargs['symbol']}'"
 
         conn = duckdb.connect(self.cache_db_path)
@@ -208,15 +225,16 @@ class _DataCache:
     def get_data_total(self, data_type: str, **kwargs):
         conn = duckdb.connect(self.cache_db_path)
         table_name = data_type
+        table_fields = self._table_fields[table_name]
         sql = f"SELECT count(*) FROM {table_name} WHERE 1=1"
 
-        if "start_date" in kwargs and kwargs["start_date"]:
+        if "start_date" in kwargs and kwargs["start_date"] and "date" in table_fields:
             sql += f" AND date >= '{kwargs['start_date']}'"
 
-        if "end_date" in kwargs and kwargs["end_date"]:
+        if "end_date" in kwargs and kwargs["end_date"] and "date" in table_fields:
             sql += f" AND date <= '{kwargs['end_date']}'"
 
-        if "symbol" in kwargs and kwargs["symbol"]:
+        if "symbol" in kwargs and kwargs["symbol"] and "symbol" in table_fields:
             sql += f" AND symbol = '{kwargs['symbol']}'"
 
         count = conn.execute(sql).fetchone()[0]
@@ -226,6 +244,14 @@ class _DataCache:
     def upsert_data(self, data_type: str, data: pd.DataFrame, unique_keys: list[str]):
         conn = duckdb.connect(self.cache_db_path)
         table_name = data_type
+        data = data.replace("NaN", None)
+        ## DELETE
+        if "date" in data.columns:
+            unique_dates = data["date"].unique().tolist()
+            date_conditions = " OR ".join([f"date = '{date}'" for date in unique_dates])
+            delete_sql = f"DELETE FROM {table_name} WHERE {date_conditions}"
+            conn.execute(delete_sql)
+        ##
         conn.register("temp_df", data)
         columns = list(data.columns)
         column_list = ", ".join([f'"{col}"' for col in columns])
@@ -253,8 +279,8 @@ class _DataReconciler:
     def __init__(self, local_data_getter, remote_data_getter):
         self.local_getter = local_data_getter
         self.remote_getter = remote_data_getter
-        self.max_lookback_days = 365 * 5
-        self.max_window = 90
+        self.max_lookback_days = 120  # TODO to Ajust
+        self.max_window = 3   # TODO to Ajust
 
     def reconcile_all(self, cache_tables):
         with Progress(
