@@ -7,17 +7,18 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-jh_data = JiuhuangData()
+jh_data = JiuhuangData(sync=False)
+
 
 def main():
     strategies = {
-        "turtle": StrategyTurtle(entry_window=20, exit_window=10),
-        "volume_trend": StrategyVolumeTrend(),
-        "volume_divergence": StrategyVolumeDivergence(volume_trend_threshold=0.05),
-        "mean_reversion": StrategyMeanReversion(deviation_threshold=0.05),
-        "sma": StrategyMovingAverageCrossover(10, 20),
+        "保持持有": StrategyBuyAndHold(),
+        "海龟": StrategyTurtle(entry_window=20, exit_window=10),
+        "量价趋势": StrategyVolumeTrend(),
+        "量价背离": StrategyVolumeDivergence(volume_trend_threshold=0.05),
+        "均值回归": StrategyMeanReversion(deviation_threshold=0.05),
+        "移动均线交叉": StrategyMovingAverageCrossover(10, 20),
     }
-    strategies["buy_and_hold"] = StrategyBuyAndHold()
 
     # 获取股票数据
     symbols = [
@@ -52,29 +53,33 @@ def main():
         "002230",  # iFLYTEK
         "002415",  # Hikvision
     ]
-    stock_price =  jh_data.get_data(
+    stock_price = jh_data.get_data(
         "stock_zh_a_hist_d",
         start_date="2025-10-06",
-        end_date="2026-02-06", 
+        end_date="2026-02-06",
     ).query("symbol in @symbols")
+    
+    stock_info = jh_data.get_data(
+        "stock_individual_info_em"
+    )
 
     backtest_result_df, plot_data = backtest(
         strategies,
         stock_price,
-        metric_func=cal_yearly_ret,
+        stock_info,
         return_plot_data=True,
         commission_rate=0.00002,
-        stamp_tax_rate=0,
         use_next_day_return=True,
     )
+
     # breakpoint()
-
-    # display_backtesting(plot_data, backtest_result_df)
-
+    # print(backtest_result_df)
+    display_backtesting(plot_data, backtest_result_df)
 
 
 if __name__ == "__main__":
     import time
+
     start = time.time()
     main()
     end = time.time()

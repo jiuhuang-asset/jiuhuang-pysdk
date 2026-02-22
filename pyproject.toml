@@ -8,9 +8,11 @@ dependencies = [
     "dotenv>=0.9.9",
     "duckdb>=1.4.4",
     "httpx>=0.28.1",
+    "joblib>=1.5.3",
     "mplfinance>=0.12.10b0",
     "pandas>=2.3.3",
     "pywebview>=6.1",
+    "quantstats>=0.0.81",
     "rich>=14.3.2",
 ]
 

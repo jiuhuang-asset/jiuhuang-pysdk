@@ -2,7 +2,8 @@ import pandas as pd
 from typing import Dict, Callable
 from .strategy import Strategy
 from .risk_management import RiskManagementParams, risk_management_one_symbol
-from .metrics import cal_cum_ret
+from .metrics import cal_metrics
+
 
 def build_position(
     df: pd.DataFrame,
@@ -51,7 +52,7 @@ def evaluate_strategies(
     strategies: dict[str, Strategy],
     symbols: list | None = None,
     use_next_day_return: bool = True,
-    metric_func: Callable = cal_cum_ret,
+    metric_func: Callable = cal_metrics,
     rmps: Dict[str, RiskManagementParams] = {},
     return_plot_data: bool = False,
 ) -> pd.DataFrame:
@@ -66,7 +67,6 @@ def evaluate_strategies(
         _plot_data_cols.remove("created_at")
     _plot_datas = []
     for strat_name, strat in strategies.items():
-        print(strat_name)
         df_sig = strat(price)
         rmp = rmps.get(strat_name, RiskManagementParams())
         df_with_pos = build_position(
@@ -84,35 +84,51 @@ def evaluate_strategies(
             _plot_datas.append(df_with_pos)
     # Combine into a DataFrame. Use union of stock_codes present in any result
     combined = pd.DataFrame(results)
-    if symbols is not None:
-        combined = combined.reindex(symbols)
-
+    combined = combined.reset_index()
+    combined = combined.rename(columns={"level_0": "symbol", "level_1": "metric"})
     return combined, pd.concat(_plot_datas).reset_index()[_plot_data_cols]
 
 
 def backtest(
     strategies: Dict[str, Strategy],
     hist_price_data: pd.DataFrame,
-    metric_func: Callable[[pd.DataFrame], float],
+    stock_info: pd.DataFrame  = pd.DataFrame(),
     rmps: Dict[str, RiskManagementParams] = {},
     commission_rate: float = 0.0002,
     stamp_tax_rate: float = 0.001,
     return_plot_data: bool = False,
     metric_decimal: int = 2,
     use_next_day_return: bool = True,
-):  
+):
     if hist_price_data.empty:
         print("没有价格数据")
-        return 
+        return
     eval_results, plot_data = evaluate_strategies(
         hist_price_data,
         strategies,
-        metric_func=lambda d: metric_func(d, commission_rate, stamp_tax_rate),
+        metric_func=lambda d: cal_metrics(d, commission_rate, stamp_tax_rate),
         rmps=rmps,
         return_plot_data=return_plot_data,
         use_next_day_return=use_next_day_return,
     )
     eval_results = eval_results.round(metric_decimal)
+    melted_eval_results = eval_results.melt(
+        id_vars=['symbol', 'metric'], 
+        var_name='strategy', 
+        value_name='value'
+    )
 
+    # Step 2: Pivot the melted DataFrame to spread metrics into columns
+    reshaped_eval_results = melted_eval_results.pivot_table(
+        index=['symbol', 'strategy'], 
+        columns='metric', 
+        values='value'
+    ).reset_index()
 
-    return eval_results, plot_data
+    # Optional: Flatten column names if needed
+    reshaped_eval_results.columns.name = None  # Remove the 'metric' label from columns
+
+    if not stock_info.empty:
+        reshaped_eval_results = reshaped_eval_results.merge(stock_info[["symbol", "symbol_name", "industry"]].drop_duplicates(), on="symbol", how="left")
+    
+    return reshaped_eval_results, plot_data

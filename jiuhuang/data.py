@@ -21,17 +21,21 @@ load_dotenv()
 
 __all__ = ["JiuhuangData"]
 
-_CACHE_TABLES = {"stock_zh_a_hist_d": ["symbol", "date"],
-                 "stock_individual_info_em": ["symbol"],
-                 "stock_zcfz_em":["date", "symbol"],
-                 "stock_lrb_em":["date", "symbol"],
-                 "stock_xjll_em":["date", "symbol"],
-                 }
+_CACHE_TABLES = {
+    "stock_zh_a_hist_d": ["symbol", "date"],
+    "stock_individual_info_em": ["symbol"],
+    "stock_zcfz_em": ["date", "symbol"],
+    "stock_lrb_em": ["date", "symbol"],
+    "stock_xjll_em": ["date", "symbol"],
+}
 
 
 class JiuhuangData:
     def __init__(
-        self, api_key: str = getenv("JIUHUANG_API_KEY") , api_url: str = getenv("JIUHUANG_API_URL"), sync: bool = True
+        self,
+        api_key: str = getenv("JIUHUANG_API_KEY"),
+        api_url: str = getenv("JIUHUANG_API_URL"),
+        sync: bool = True,
     ):
         self.api_key = api_key
         self.api_url = api_url
@@ -173,7 +177,6 @@ class _DataCache:
         self._table_fields = {}
         self._initialize_cache()
 
-
     def _initialize_cache(self):
         os.makedirs(self.cache_dir, exist_ok=True)
         try:
@@ -199,10 +202,9 @@ class _DataCache:
                 self._table_fields.update({t: fields})
         conn.close()
 
-
     def get_data(self, data_type, **kwargs):
         table_name = data_type
-        table_fields = self._table_fields[table_name]    
+        table_fields = self._table_fields[table_name]
         if table_name not in _CACHE_TABLES:
             return pd.DataFrame()
 
@@ -279,8 +281,8 @@ class _DataReconciler:
     def __init__(self, local_data_getter, remote_data_getter):
         self.local_getter = local_data_getter
         self.remote_getter = remote_data_getter
-        self.max_lookback_days = 120  # TODO to Ajust
-        self.max_window = 3   # TODO to Ajust
+        self.max_lookback_days = 365 * 5  # TODO to Ajust
+        self.max_window =  90  # TODO to Ajust
 
     def reconcile_all(self, cache_tables):
         with Progress(

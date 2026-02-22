@@ -1,4 +1,10 @@
 import pandas as pd
+import quantstats as qs
+import numpy as np
+
+
+__all__ = ["cal_metrics"]
+
 
 def calculate_returns(df: pd.DataFrame, key="symbol") -> pd.DataFrame:
     """Calculate daily returns for each stock.
@@ -15,7 +21,6 @@ def calculate_returns(df: pd.DataFrame, key="symbol") -> pd.DataFrame:
     return result_df
 
 
-
 def calculate_strategy_returns(
     df: pd.DataFrame, commission_rate: float = 0.0002, stamp_tax_rate: float = 0.001
 ) -> pd.DataFrame:
@@ -23,7 +28,7 @@ def calculate_strategy_returns(
 
     Args:
         df: DataFrame with stock data and positions
-        commission_rate: 买卖双向手续费率 
+        commission_rate: 买卖双向手续费率
         stamp_tax_rate: 印花税率，仅对卖出收取 (默认 0.001 = 0.1%)
 
     Returns:
@@ -62,178 +67,52 @@ def calculate_strategy_returns(
     return result_df
 
 
-def cal_cum_ret(
+def cal_metrics(
     df: pd.DataFrame, commission_rate: float = 0.0002, stamp_tax_rate: float = 0.001
-) -> float:
-    """Calculate cumulative strategy return.
+) -> pd.Series:
+    """
+    Calculate multiple strategy metrics using quantstats for each symbol.
 
     Args:
-        df: DataFrame with stock data, signals and positions
+        df: DataFrame with stock data, signals, and positions.
+        commission_rate: Commission rate for buying/selling.
+        stamp_tax_rate: Stamp tax rate for selling.
 
     Returns:
-        Series with cumulative returns per stock
+        pd.Series with multi-level index (metric_name, symbol).
     """
-    result_df = calculate_strategy_returns(df, commission_rate, stamp_tax_rate)
+    df = calculate_strategy_returns(df, commission_rate, stamp_tax_rate)
+    metrics = [
+        "年化收益率",
+        "最大回撤",
+        "胜率",
+        "夏普比率",
+        "卡玛比率",
+        "索提诺比率",
+        "年化波动率",
+        "风险价值(VaR)",
+    ]
 
-    # Calculate cumulative returns per stock
-    def _cum_ret_group(g):
-        if g.empty:
-            return 0.0
-        return (1 + g["strategy_return"]).cumprod().iloc[-1] - 1
+    results = []
+    for symbol, group in df.groupby("symbol"):
+        # Extract strategy returns for this symbol
+        returns = group.set_index("date")["strategy_return"]
 
-    cum_per_stock = result_df.groupby("symbol", group_keys=False).apply(_cum_ret_group)
-    cum_per_stock.name = "cum_return"
-    return cum_per_stock
+        # Compute metrics using quantstats
+        cagr = qs.stats.cagr(returns)
+        max_dd = qs.stats.max_drawdown(returns)
+        win_rate = (returns > 0).mean()
+        sharpe = qs.stats.sharpe(returns)
+        calmar = qs.stats.calmar(returns)
+        sortino = qs.stats.sortino(returns)
+        volatility = qs.stats.volatility(returns)
+        var = qs.stats.value_at_risk(returns)
 
+        symbol_results = pd.Series(
+            [cagr, max_dd, win_rate, sharpe, calmar, sortino, volatility, var],
+            index=pd.MultiIndex.from_product([[symbol], metrics]),
+        )
+        results.append(symbol_results)
 
-def cal_yearly_ret(
-    df: pd.DataFrame, commission_rate: float = 0.0002, stamp_tax_rate: float = 0.001
-) -> float:
-    """Calculate yearly return for each stock.
-
-    Args:
-        df: DataFrame with stock data, signals and positions
-
-    Returns:
-        Series with yearly return per stock
-    """
-    result_df = calculate_strategy_returns(df, commission_rate, stamp_tax_rate)
-
-    # Calculate yearly return per stock
-    def _yearly_return_group(g):
-        if g.empty:
-            return 0.0
-
-        # 计算策略累计收益
-        cumulative_returns = (1 + g["strategy_return"]).cumprod()
-        total_return = cumulative_returns.iloc[-1] - 1
-
-        # 计算交易天数
-        n_days = len(g)
-        if n_days == 0:
-            return 0.0
-
-        # 年化收益率计算 (假设一年252个交易日)
-        n_years = n_days / 252.0
-        if n_years == 0:
-            return 0.0
-
-        yearly_return = (cumulative_returns.iloc[-1]) ** (1 / n_years) - 1
-        return yearly_return
-
-    yearly_return_per_stock = result_df.groupby("symbol", group_keys=False).apply(
-        _yearly_return_group
-    )
-    yearly_return_per_stock.name = "yearly_return"
-    return yearly_return_per_stock
-
-
-def cal_max_drawdown(
-    df: pd.DataFrame, commission_rate: float = 0.0002, stamp_tax_rate: float = 0.001
-) -> float:
-    """Calculate maximum drawdown for each stock.
-
-    Args:
-        df: DataFrame with stock data, signals and positions
-
-    Returns:
-        Series with maximum drawdown per stock
-    """
-    result_df = calculate_strategy_returns(df, commission_rate, stamp_tax_rate)
-
-    # Calculate cumulative returns and max drawdown per stock
-    def _max_drawdown_group(g):
-        if g.empty:
-            return 0.0
-
-        cumulative = (1 + g["strategy_return"]).cumprod()
-        running_max = cumulative.cummax()
-        drawdown = (cumulative - running_max) / running_max
-        return drawdown.min()
-
-    max_dd_per_stock = result_df.groupby("symbol", group_keys=False).apply(
-        _max_drawdown_group
-    )
-    max_dd_per_stock.name = "max_drawdown"
-    return max_dd_per_stock
-
-
-def cal_win_rate(
-    df: pd.DataFrame, commission_rate: float = 0.0002, stamp_tax_rate: float = 0.001
-) -> float:
-    """Calculate win rate (percentage of positive returns when in position).
-
-    Args:
-        df: DataFrame with stock data, signals and positions
-
-    Returns:
-        Series with win rate per stock
-    """
-    result_df = calculate_strategy_returns(df, commission_rate, stamp_tax_rate)
-
-    # Calculate win rate per stock
-    def _win_rate_group(g):
-        if g.empty:
-            return 0.0
-
-        # Only count periods when we were in position
-        in_position_returns = g[g["position"] == 1]["strategy_return"]
-        if len(in_position_returns) == 0:
-            return 0.0
-
-        wins = (in_position_returns > 0).sum()
-        total_trades = len(in_position_returns)
-        return wins / total_trades if total_trades > 0 else 0.0
-
-    win_rate_per_stock = result_df.groupby("symbol", group_keys=False).apply(
-        _win_rate_group
-    )
-    win_rate_per_stock.name = "win_rate"
-    return win_rate_per_stock
-
-
-def cal_sharpe_ratio(
-    df: pd.DataFrame, commission_rate: float = 0.0002, stamp_tax_rate: float = 0.001
-) -> float:
-    """Calculate Sharpe ratio for each stock.
-
-    Args:
-        df: DataFrame with stock data, signals and positions
-
-    Returns:
-        Series with Sharpe ratio per stock
-    """
-    result_df = calculate_strategy_returns(df, commission_rate, stamp_tax_rate)
-
-    # Calculate Sharpe ratio per stock
-    def _sharpe_ratio_group(g):
-        if g.empty:
-            return 0.0
-
-        # Get strategy returns when in position
-        strategy_returns = g["strategy_return"]
-
-        if len(strategy_returns) == 0:
-            return 0.0
-
-        # Calculate mean return and standard deviation
-        mean_return = strategy_returns.mean()
-        std_return = strategy_returns.std()
-
-        # Avoid division by zero
-        if std_return == 0:
-            return 0.0 if mean_return <= 0 else float("inf")
-
-        # Sharpe ratio (assuming risk-free rate = 0 for simplicity)
-        sharpe = mean_return / std_return
-
-        # Annualize the Sharpe ratio (assuming 252 trading days per year)
-        annualized_sharpe = sharpe * (252**0.5)
-
-        return annualized_sharpe
-
-    sharpe_per_stock = result_df.groupby("symbol", group_keys=False).apply(
-        _sharpe_ratio_group
-    )
-    sharpe_per_stock.name = "sharpe_ratio"
-    return sharpe_per_stock
+    combined_series = pd.concat(results)
+    return combined_series

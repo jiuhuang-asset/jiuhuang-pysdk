@@ -258,19 +258,76 @@
 
     // --- Grid.js 表格 ---
     function updateGridTable() {
-        const allKeys = perfData.length > 0 ? Object.keys(perfData[0]).filter(key => key !== 'symbol') : [];
-        const columns = ['Symbol', ...allKeys];
-        const data = perfData.map(d => [d.symbol, ...allKeys.map(key => d[key])]);
+        const allKeys = perfData.length > 0 ? Object.keys(perfData[0]).filter(key => 
+            !['symbol', 'symbol_name', 'industry', 'strategy'].includes(key) // Exclude these keys
+        ) : [];
+
+        const columns = [
+            {
+                name: '代码',
+                formatter: (cell) => cell,
+                filter: 'input',
+                placeholder: 'Filter by Symbol'
+            },
+            {
+                name: '名称',
+                formatter: (cell) => cell,
+                filter: 'input',
+                placeholder: 'Filter by Symbol Name'
+            },
+            {
+                name: '行业',
+                formatter: (cell) => cell,
+                filter: 'input',
+                placeholder: 'Filter by Industry',
+            },
+            {
+                name: '策略',
+                formatter: (cell) => cell,
+                filter: 'input',
+                placeholder: 'Filter by Strategy'
+            },
+            ...allKeys.map(key => ({
+                name: key,
+                formatter: (cell) => cell,
+                filter: 'input',
+                placeholder: `Filter by ${key}`,
+                
+            }))
+        ];
+
+        const data = perfData.map(d => [
+            d.symbol,           // Explicitly map Symbol
+            d.symbol_name || '',// Explicitly map Symbol Name
+            d.industry || '',   // Explicitly map Industry
+            d.strategy || '',
+            ...allKeys.map(key => d[key]) // Map remaining keys
+        ]);
 
         new gridjs.Grid({
             columns: columns,
             data: data,
             sort: true,
-            pagination: { limit: 10 },
-            search: true
+            pagination: {
+                limit: 20, // Default number of rows per page
+                limits: [10, 20, 50], // Options for row count per page
+                summary: true // Optional: Show a summary of current page info
+            },
+            search: true,
+            style: {
+                table: {
+                    'min-width': '100%',
+                    'overflow-x': 'auto'
+                },
+                th: {
+                    'min-width': '150px'
+                },
+                td: {
+                    'min-width': '150px'
+                }
+            }
         }).render(document.getElementById('performance-table'));
     }
-
     // 渲染页面结构
     const App = () => React.createElement('div', null, [
         React.createElement(ControlPanel),
