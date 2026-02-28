@@ -1,59 +1,30 @@
-import webview
 import pandas as pd
 import numpy as np
-import json
+from jiuhuang.dash import display_backtesting
 
-
-# --- 模拟数据生成 ---
-def get_mock_df():
-    symbols = ["000001", "000002", "600000"]
-    strategies = ["turtle", "sma", "mean_reversion"]
-    data = []
-    for s in symbols:
-        for st in strategies:
-            dates = pd.date_range("2023-01-01", periods=100)
-            base = np.random.randint(10, 100)
-            prices = base + np.cumsum(np.random.randn(100))
-            for i, d in enumerate(dates):
-                data.append(
-                    {
-                        "date": d.strftime("%Y-%m-%d"),
-                        "symbol": s,
-                        "strategy": st,
-                        "open": prices[i],
-                        "close": prices[i] + np.random.randn(),
-                        "high": prices[i] + 2,
-                        "low": prices[i] - 2,
-                        "buy_signal": 1 if np.random.rand() > 0.95 else 0,
-                        "sell_signal": 1 if np.random.rand() > 0.95 else 0,
-                    }
-                )
-    return pd.DataFrame(data)
-
-
-def get_performance_df():
-    data = {
-        "symbol": ["000001", "000002", "600000"],
-        "turtle": [0.01, -0.21, 0.05],
-        "sma": [0.06, -0.12, 0.08],
-        "mean_reversion": [0.03, -0.12, -0.02],
+# 创建模拟的 main_data
+dates = pd.date_range("2024-01-01", periods=30, freq="D")
+main_data = pd.DataFrame(
+    {
+        "symbol": ["AAPL"] * 30,
+        "date": dates,
+        "open": np.random.uniform(100, 110, 30),
+        "high": np.random.uniform(110, 120, 30),
+        "low": np.random.uniform(90, 100, 30),
+        "close": np.random.uniform(100, 115, 30),
+        "volume": np.random.randint(1000000, 5000000, 30),
+        "buy_signal": [True if i % 5 == 0 else False for i in range(30)],
+        "sell_signal": [True if i % 7 == 0 else False for i in range(30)],
+        "strategy": ["ma_cross"] * 30,
     }
-    return pd.DataFrame(data)
+)
 
+# 创建模拟的 perf_data
+perf_data = pd.DataFrame(
+    {
+        "metric": ["total_return", "sharpe_ratio", "max_drawdown", "win_rate"],
+        "value": [0.15, 1.8, -0.08, 0.62],
+    }
+)
 
-class Api:
-    def init_data(self):
-        df = get_mock_df()
-        print(len(df))
-        perf = get_performance_df()
-        return {
-            "main_data": df.to_dict(orient="records"),
-            "perf_data": perf.to_dict(orient="records"),
-        }
-
-
-if __name__ == "__main__":
-    api = Api()
-    # 允许 Python 与 JS 交互
-    window = webview.create_window("量化策略看板", "index.html", js_api=api)
-    webview.start()
+display_backtesting(main_data, perf_data)

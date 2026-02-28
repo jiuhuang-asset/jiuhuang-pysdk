@@ -33,7 +33,7 @@ def display_backtesting(main_data, pref_data):
     api = BacktestingView(main_data, pref_data)
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    html_path = os.path.join(current_dir, "front_src", "bt.html")
+    html_path = os.path.join(current_dir, "front_src", "dist", "index.html")
 
     window = webview.create_window("回测结果看板", html_path, js_api=api)
     webview.start()

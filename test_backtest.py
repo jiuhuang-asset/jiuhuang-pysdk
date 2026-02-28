@@ -7,7 +7,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-jh_data = JiuhuangData(sync=False)
+jh_data = JiuhuangData(sync=True)
 
 
 def main():
@@ -74,7 +74,7 @@ def main():
 
     # breakpoint()
     # print(backtest_result_df)
-    display_backtesting(plot_data, backtest_result_df)
+  
 
 
 if __name__ == "__main__":

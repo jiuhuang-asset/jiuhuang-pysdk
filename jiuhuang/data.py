@@ -179,6 +179,20 @@ class _DataCache:
 
     def _initialize_cache(self):
         os.makedirs(self.cache_dir, exist_ok=True)
+        table_fields_path = os.path.join(self.cache_dir, "table_fields.json")
+
+        # 尝试从缓存文件加载 table_fields
+        if os.path.exists(table_fields_path):
+            try:
+                with open(table_fields_path, "r", encoding="utf-8") as f:
+                    self._table_fields = json.load(f)
+                # 缓存已加载，跳过 HTTP 请求
+                return
+            except (json.JSONDecodeError, IOError):
+                # 文件损坏或读取失败，回退到 HTTP 请求
+                pass
+
+        # 缓存文件不存在或读取失败，从 HTTP 获取
         try:
             conn = duckdb.connect(self.cache_db_path)
         except:
@@ -201,6 +215,10 @@ class _DataCache:
                 fields = resp.json()["data"]
                 self._table_fields.update({t: fields})
         conn.close()
+
+        # 保存到缓存文件
+        with open(table_fields_path, "w", encoding="utf-8") as f:
+            json.dump(self._table_fields, f, ensure_ascii=False, indent=2)
 
     def get_data(self, data_type, **kwargs):
         table_name = data_type
