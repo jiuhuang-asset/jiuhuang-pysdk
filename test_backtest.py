@@ -14,9 +14,9 @@ def main():
     strategies = {
         "保持持有": StrategyBuyAndHold(),
         "海龟": StrategyTurtle(entry_window=20, exit_window=10),
-        "量价趋势": StrategyVolumeTrend(),
-        "量价背离": StrategyVolumeDivergence(volume_trend_threshold=0.05),
-        "均值回归": StrategyMeanReversion(deviation_threshold=0.05),
+        # "量价趋势": StrategyVolumeTrend(),
+        # "量价背离": StrategyVolumeDivergence(volume_trend_threshold=0.05),
+        # "均值回归": StrategyMeanReversion(deviation_threshold=0.05),
         "移动均线交叉": StrategyMovingAverageCrossover(10, 20),
     }
 
@@ -54,15 +54,17 @@ def main():
         "002415",  # Hikvision
     ]
     stock_price = jh_data.get_data(
-        "stock_zh_a_hist_d",
-        start_date="2025-10-06",
-        end_date="2026-02-06",
+        "stock_zh_a_hist_d_qfq",
+        start="2025-01-01",
+        end="2026-02-06 错误的时间cuo",
     ).query("symbol in @symbols")
     
     stock_info = jh_data.get_data(
-        "stock_individual_info_em"
+        "stock_individual_info_em",
+        # remote=True,
     )
 
+    breakpoint()
     backtest_result_df, plot_data = backtest(
         strategies,
         stock_price,
@@ -72,8 +74,9 @@ def main():
         use_next_day_return=True,
     )
 
-    # breakpoint()
-    # print(backtest_result_df)
+    breakpoint()
+
+    display_backtesting(plot_data, backtest_result_df)
   
 
 

@@ -1,5 +1,7 @@
+import re
 import httpx
 import json
+import tempfile
 import sys
 import pandas as pd
 from os import getenv
@@ -21,14 +23,15 @@ load_dotenv()
 
 __all__ = ["JiuhuangData"]
 
-_CACHE_TABLES = {
-    "stock_zh_a_hist_d": ["symbol", "date"],
-    "stock_individual_info_em": ["symbol"],
-    "stock_zcfz_em": ["date", "symbol"],
-    "stock_lrb_em": ["date", "symbol"],
-    "stock_xjll_em": ["date", "symbol"],
-}
 
+_CACHE_LOOKBACK_DAYS = {
+    "stock_zh_a_hist_d": 365 * 5,
+    "stock_zh_a_hist_d_qfq": 365 * 5,
+    "stock_zh_a_hist_d_hfq": 365 * 5,
+    "stock_zcfz_em": 365 * 5,
+    "stock_lrb_em": 365 * 5,
+    "stock_xjll_em": 365 * 5,  
+}
 
 class JiuhuangData:
     def __init__(
@@ -42,8 +45,7 @@ class JiuhuangData:
         self._prepare_client(api_key)
         self._cache = _DataCache(jd=self)
         if sync:
-            # _reconcile(self._cache, self)
-            _DataReconciler(self._cache, self).reconcile_all(_CACHE_TABLES)
+            _DataReconciler(self._cache, self).reconcile_all()
 
     def _prepare_client(self, api_key: str):
         client = httpx.Client(timeout=180)
@@ -71,15 +73,15 @@ class JiuhuangData:
         self,
         data_type: str,
         symbol: str = "",
-        start_date: str = "",
-        end_date: str = "",
+        start: str = "",
+        end: str = "",
     ):
         url = f"{self.api_url}/data-offline/"
         payload = {
             "data_type": data_type,
             "symbol": symbol,
-            "start_date": start_date,
-            "end_date": end_date,
+            "start": start,
+            "end": end,
             "batch_size": 1000,
             "stream": False,
         }
@@ -93,14 +95,14 @@ class JiuhuangData:
         self,
         data_type: str,
         symbol: str = "",
-        start_date: str = "",
-        end_date: str = "",
+        start: str = "",
+        end: str = "",
     ):
         payload = {
             "data_type": data_type,
             "symbol": symbol,
-            "start_date": start_date,
-            "end_date": end_date,
+            "start": start,
+            "end": end,
         }
 
         response = self._client.post(f"{self.api_url}/data-offline/total", json=payload)
@@ -118,9 +120,9 @@ class JiuhuangData:
         self,
         data_type: str,
         symbol: str = "",
-        start_date: str = "",
-        end_date: str = "",
-        remote: bool = getenv("JIUHUANG_DATA_MODE", "").lower() == "remote",
+        start: str = "",
+        end: str = "",
+        remote: bool = False,
         **kwargs,
     ):
         """
@@ -131,15 +133,15 @@ class JiuhuangData:
 
         :param data_type: Type of data to retrieve (e.g., 'index_global_hist_em')
         :param symbol: Symbol or identifier for the data series
-        :param start_date: Start date for the data range (format: YYYY-MM-DD)
-        :param end_date: End date for the data range (format: YYYY-MM-DD)
+        :param start: Start date for the data range (format: YYYY-MM-DD)
+        :param end: End date for the data range (format: YYYY-MM-DD)
         :param remote: Force fetch data form remote
         """
         data = None
         if not remote:
             kw = {k: v for k, v in kwargs.items() if k != "remote"}
             data = self._cache.get_data(
-                data_type, symbol=symbol, start_date=start_date, end_date=end_date, **kw
+                data_type, symbol=symbol, start=start, end=end, **kw
             )
 
             if not data.empty:
@@ -149,8 +151,8 @@ class JiuhuangData:
         payload = {
             "data_type": data_type,
             "symbol": symbol,
-            "start_date": start_date,
-            "end_date": end_date,
+            "start": start,
+            "end": end,
             "batch_size": 1000,
             "stream": True,
         }
@@ -179,34 +181,30 @@ class _DataCache:
 
     def _initialize_cache(self):
         os.makedirs(self.cache_dir, exist_ok=True)
-        table_fields_path = os.path.join(self.cache_dir, "table_fields.json")
 
-        # 尝试从缓存文件加载 table_fields
-        if os.path.exists(table_fields_path):
-            try:
-                with open(table_fields_path, "r", encoding="utf-8") as f:
-                    self._table_fields = json.load(f)
-                # 缓存已加载，跳过 HTTP 请求
-                return
-            except (json.JSONDecodeError, IOError):
-                # 文件损坏或读取失败，回退到 HTTP 请求
-                pass
-
-        # 缓存文件不存在或读取失败，从 HTTP 获取
         try:
             conn = duckdb.connect(self.cache_db_path)
         except:
             rprint("[red]Warning: 请确保只有单个正在运行的JiuhuangData实例[/red]")
             sys.exit(1)
-        for t in _CACHE_TABLES.keys():
+
+        for t in _CACHE_LOOKBACK_DAYS.keys():
+            # 获取 DDL 并创建表
             resp = self._jd._client.get(
                 self._jd.api_url + "/data-offline/ddl", params={"data_type": t}
             )
-            # breakpoint()
             if resp.status_code == 200:
                 ddl = resp.json()["data"]
+                seq_match = re.search(r"nextval\('(\w+)'\)\)?" , ddl)
+                if seq_match:
+                    seq_name = seq_match.group(1)
+                    try:
+                        conn.execute(f"CREATE SEQUENCE IF NOT EXISTS {seq_name}")
+                    except Exception:
+                        pass
                 conn.execute(ddl)
 
+            # 获取 table_fields
             resp = self._jd._client.get(
                 self._jd.api_url + "/data-offline/table_fields",
                 params={"data_type": t},
@@ -214,28 +212,32 @@ class _DataCache:
             if resp.status_code == 200:
                 fields = resp.json()["data"]
                 self._table_fields.update({t: fields})
+
         conn.close()
 
-        # 保存到缓存文件
-        with open(table_fields_path, "w", encoding="utf-8") as f:
-            json.dump(self._table_fields, f, ensure_ascii=False, indent=2)
-
-    def get_data(self, data_type, **kwargs):
-        table_name = data_type
+    def _build_filter_sql(self, table_name: str, kwargs: dict) -> str:
+        """构建 WHERE 条件SQL片段"""
         table_fields = self._table_fields[table_name]
-        if table_name not in _CACHE_TABLES:
-            return pd.DataFrame()
+        sql = "WHERE 1=1"
 
-        sql = f"SELECT * FROM {table_name} WHERE 1=1"
+        if "start" in kwargs and kwargs["start"] and "date" in table_fields:
+            sql += f" AND date >= '{kwargs['start']}'"
 
-        if "start_date" in kwargs and kwargs["start_date"] and "date" in table_fields:
-            sql += f" AND date >= '{kwargs['start_date']}'"
-
-        if "end_date" in kwargs and kwargs["end_date"] and "date" in table_fields:
-            sql += f" AND date <= '{kwargs['end_date']}'"
+        if "end" in kwargs and kwargs["end"] and "date" in table_fields:
+            sql += f" AND date <= '{kwargs['end']}'"
 
         if "symbol" in kwargs and kwargs["symbol"] and "symbol" in table_fields:
             sql += f" AND symbol = '{kwargs['symbol']}'"
+
+        return sql
+
+    def get_data(self, data_type, **kwargs):
+        table_name = data_type
+        if table_name not in _CACHE_LOOKBACK_DAYS:
+            return pd.DataFrame()
+
+        where_sql = self._build_filter_sql(table_name, kwargs)
+        sql = f"SELECT * FROM {table_name} {where_sql}"
 
         conn = duckdb.connect(self.cache_db_path)
         data = conn.sql(sql).to_df()
@@ -243,55 +245,44 @@ class _DataCache:
         return data
 
     def get_data_total(self, data_type: str, **kwargs):
-        conn = duckdb.connect(self.cache_db_path)
         table_name = data_type
-        table_fields = self._table_fields[table_name]
-        sql = f"SELECT count(*) FROM {table_name} WHERE 1=1"
+        where_sql = self._build_filter_sql(table_name, kwargs)
+        sql = f"SELECT count(*) FROM {table_name} {where_sql}"
 
-        if "start_date" in kwargs and kwargs["start_date"] and "date" in table_fields:
-            sql += f" AND date >= '{kwargs['start_date']}'"
-
-        if "end_date" in kwargs and kwargs["end_date"] and "date" in table_fields:
-            sql += f" AND date <= '{kwargs['end_date']}'"
-
-        if "symbol" in kwargs and kwargs["symbol"] and "symbol" in table_fields:
-            sql += f" AND symbol = '{kwargs['symbol']}'"
-
+        conn = duckdb.connect(self.cache_db_path)
         count = conn.execute(sql).fetchone()[0]
         conn.close()
         return count
 
-    def upsert_data(self, data_type: str, data: pd.DataFrame, unique_keys: list[str]):
-        conn = duckdb.connect(self.cache_db_path)
+    def bulk_import(self, data_type: str, data: pd.DataFrame):
+        """批量导入数据到缓存
+
+        Args:
+            data_type: 表名
+            data: pandas DataFrame
+        """
+        if data.empty:
+            return
+
         table_name = data_type
         data = data.replace("NaN", None)
-        ## DELETE
-        if "date" in data.columns:
-            unique_dates = data["date"].unique().tolist()
-            date_conditions = " OR ".join([f"date = '{date}'" for date in unique_dates])
-            delete_sql = f"DELETE FROM {table_name} WHERE {date_conditions}"
-            conn.execute(delete_sql)
-        ##
-        conn.register("temp_df", data)
-        columns = list(data.columns)
-        column_list = ", ".join([f'"{col}"' for col in columns])
+        conn = duckdb.connect(self.cache_db_path)
 
-        # Build WHERE NOT EXISTS clause to avoid conflicts
-        where_conditions = []
-        for key in unique_keys:
-            where_conditions.append(f't1."{key}" = t2."{key}"')
-        where_clause = " AND ".join(where_conditions)
+        with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as f:
+            temp_path = f.name
 
-        insert_sql = f"""
-            INSERT INTO {table_name} ({column_list})
-            SELECT {column_list} FROM temp_df t1
-            WHERE NOT EXISTS (
-                SELECT 1 FROM {table_name} t2
-                WHERE {where_clause}
-            )
-        """
-        conn.execute(insert_sql)
-        conn.unregister("temp_df")
+        try:
+            # 写入 Parquet 文件
+            data.to_parquet(temp_path, index=False)
+
+            # 使用 COPY 高效导入
+            copy_sql = f"COPY {table_name} FROM '{temp_path}' (FORMAT PARQUET)"
+            conn.execute(copy_sql)
+        finally:
+            # 清理临时文件
+            import os
+            os.unlink(temp_path)
+
         conn.close()
 
 
@@ -299,10 +290,9 @@ class _DataReconciler:
     def __init__(self, local_data_getter, remote_data_getter):
         self.local_getter = local_data_getter
         self.remote_getter = remote_data_getter
-        self.max_lookback_days = 365 * 5  # TODO to Ajust
-        self.max_window =  90  # TODO to Ajust
+        self.window_size = 30
 
-    def reconcile_all(self, cache_tables):
+    def reconcile_all(self):
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -312,84 +302,99 @@ class _DataReconciler:
             TimeRemainingColumn(),
             expand=True,
         ) as progress:
+            for data_type in _CACHE_LOOKBACK_DAYS.keys():
+                self._reconcile_table(data_type, progress)
 
-            for data_type in cache_tables.keys():
-                self._reconcile_table(data_type, progress, cache_tables.get(data_type))
+    def _reconcile_table(self, data_type, progress):
+        """
+        对账逻辑:
 
-    def _reconcile_table(self, data_type, progress, unique_keys):
+        全量对比 → 有差异 →
+            从最近 window (30天) 开始滑动检查
+            ↓
+            发现差异 → 删除本地 window 数据 → 同步 remote 数据
+            ↓
+            继续往前下一个 window (30天)
+            ↓
+            直到 limit_date
+        """
         today = datetime.today()
-        limit_date = today - timedelta(days=self.max_lookback_days)
+        lookback_days = _CACHE_LOOKBACK_DAYS.get(data_type, 0)
+
+        limit_date = today - timedelta(days=lookback_days)
         start_limit_str = limit_date.strftime("%Y-%m-%d")
         end_today_str = today.strftime("%Y-%m-%d")
 
-        # --- 优化策略 1: 全局总量预检 ---
-        # progress.console.print(f"[bold blue]🔍 Pre-checking {data_type}...[/bold blue]")
+        task_id = progress.add_task(
+            f"Reconciling {data_type}", total=lookback_days
+        )
 
+        # --- Step 1: 全量对比整个区间 ---
         g_local = self.local_getter.get_data_total(
-            data_type, start_date=start_limit_str, end_date=end_today_str
+            data_type, start=start_limit_str, end=end_today_str
         )
         g_remote = self.remote_getter.get_data_total(
-            data_type, start_date=start_limit_str, end_date=end_today_str
+            data_type, start=start_limit_str, end=end_today_str
         )
 
-        task_id = progress.add_task(
-            f"Reconciling {data_type}", total=self.max_lookback_days
-        )
+        progress.update(task_id, advance=max(1, lookback_days * 0.05))
 
         if g_local == g_remote:
-            # 总量一致，直接完成任务
             progress.update(
                 task_id,
-                completed=self.max_lookback_days,
+                completed=lookback_days,
                 description=f"[green]✔ {data_type} Already Consistent (Total: {g_local})",
             )
             return
 
-        # --- 如果总量不一致，进入滑动窗口逻辑 ---
         progress.console.print(
-            f"[yellow]‼ {data_type} mismatch detected ({g_local} vs {g_remote}). Starting deep sync...[/yellow]"
+            f"[yellow]‼ {data_type} mismatch ({g_local} vs {g_remote}). Starting window scan...[/yellow]"
         )
 
+        # --- Step 2: 固定窗口滑动检测 ---
+        window_days = self.window_size
         current_end_dt = today
-        window_days = 1
 
         while current_end_dt >= limit_date:
+            # 计算窗口起始日期（闭区间，所以 -1）
             current_start_dt = current_end_dt - timedelta(days=window_days - 1)
+
+            # 如果窗口超出 limit_date，调整为 limit_date
             if current_start_dt < limit_date:
                 current_start_dt = limit_date
+                window_days = (current_end_dt - current_start_dt).days + 1
 
             start_str = current_start_dt.strftime("%Y-%m-%d")
             end_str = current_end_dt.strftime("%Y-%m-%d")
 
+            # 对比这个窗口的数据量
             l_total = self.local_getter.get_data_total(
-                data_type, start_date=start_str, end_date=end_str
+                data_type, start=start_str, end=end_str
             )
             r_total = self.remote_getter.get_data_total(
-                data_type, start_date=start_str, end_date=end_str
+                data_type, start=start_str, end=end_str
             )
 
-            days_processed = (current_end_dt - current_start_dt).days + 1
+            days_in_window = (current_end_dt - current_start_dt).days + 1
+            progress.update(task_id, advance=days_in_window)
 
             if l_total != r_total:
-                # 只有不一致时才输出，且增加具体差异信息
-                progress.console.print(
-                    f"  [red]diff[/red] {start_str} to {end_str}: L{l_total}/R{r_total}"
+                # 先删除本地 window 期间的数据，再下载 remote 数据导入
+                conn = duckdb.connect(self.local_getter.cache_db_path)
+                conn.execute(
+                    f"DELETE FROM {data_type} WHERE date >= '{start_str}' AND date <= '{end_str}'"
                 )
+                conn.close()
+
+                # 同步这个窗口的数据
                 remote_data = self.remote_getter.get_data(
-                    data_type, start_date=start_str, end_date=end_str, remote=True
+                    data_type, start=start_str, end=end_str, remote=True
                 )
 
                 if remote_data is not None and not remote_data.empty:
-                    self.local_getter.upsert_data(
-                        data_type, remote_data, unique_keys=unique_keys
-                    )
+                    self.local_getter.bulk_import(data_type, remote_data)
 
-                current_end_dt = current_start_dt - timedelta(days=1)
-                window_days = 1  # 遇到错误收缩窗口
-            else:
-                current_end_dt = current_start_dt - timedelta(days=1)
-                window_days = min(window_days * 2, self.max_window)
-
-            progress.update(task_id, advance=days_processed)
+            # 窗口向前滑动（闭区间不重叠：下一个窗口从 start-1 开始）
+            current_end_dt = current_start_dt - timedelta(days=1)
 
         progress.update(task_id, description=f"[green]✔ {data_type} Fixed and Synced")
