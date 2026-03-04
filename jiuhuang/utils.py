@@ -1,9 +1,38 @@
+import json
 import pandas as pd
 from rich.console import Console
 from rich.table import Table
 from datetime import datetime
 
 console = Console()
+
+
+def raise_err_with_details(response, read_body: bool = True) -> None:
+    """
+    检查响应状态，如果出错则抛出包含具体错误信息的异常。
+
+    替代 response.raise_for_status()，能解析响应体中的错误信息。
+
+    Args:
+        response: httpx.Response 对象
+        read_body: 是否读取响应体获取错误详情。流式响应应设为 False
+    """
+    if response.status_code >= 400:
+        error_msg = f"HTTP {response.status_code}"
+        # 流式响应需要特殊处理：先消费流或使用 text 属性
+        if read_body:
+            try:
+                # 对于流式响应，需要读取完整内容
+                if hasattr(response, 'stream'):
+                    # 流式响应：先读取完整内容
+                    error_body = response.read().decode('utf-8')
+                else:
+                    error_body = response.text
+                error_data = json.loads(error_body)
+                error_msg = error_data.get("detail", error_body)
+            except (json.JSONDecodeError, ValueError):
+                error_msg = error_body if 'error_body' in dir() else response.text or error_msg
+        raise Exception(f"API error {response.status_code}: {error_msg}")
 
 
 def rprint(label: str, content: str, add_datetime: bool = True):

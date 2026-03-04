@@ -7,7 +7,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-jh_data = JiuhuangData(sync=True)
+jh_data = JiuhuangData()
 
 
 def main():
@@ -73,8 +73,6 @@ def main():
         commission_rate=0.00002,
         use_next_day_return=True,
     )
-
-    breakpoint()
 
     display_backtesting(plot_data, backtest_result_df)
   

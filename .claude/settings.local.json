@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run python test_backtest.py)",
+      "Bash(python -c \":*)"
+    ]
+  }
+}

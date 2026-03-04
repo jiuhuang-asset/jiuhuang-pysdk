@@ -18,6 +18,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 from rich import print as rprint
+from .utils import raise_err_with_details
 
 load_dotenv()
 
@@ -25,6 +26,7 @@ __all__ = ["JiuhuangData"]
 
 
 _CACHE_LOOKBACK_DAYS = {
+    "stock_info_a_code_name": None,
     "stock_zh_a_hist_d": 365 * 5,
     "stock_zh_a_hist_d_qfq": 365 * 5,
     "stock_zh_a_hist_d_hfq": 365 * 5,
@@ -65,49 +67,24 @@ class JiuhuangData:
         """
         url = f"{self.api_url}/data-offline/data_types"
         response = self._client.get(url)
-        response.raise_for_status()
-        dts = response.json()["data"]
-        return dts
-
-    def _get_data_all(
-        self,
-        data_type: str,
-        symbol: str = "",
-        start: str = "",
-        end: str = "",
-    ):
-        url = f"{self.api_url}/data-offline/"
-        payload = {
-            "data_type": data_type,
-            "symbol": symbol,
-            "start": start,
-            "end": end,
-            "batch_size": 1000,
-            "stream": False,
-        }
-
-        response = self._client.post(url, json=payload)
-        response.raise_for_status()
+        raise_err_with_details(response)
         dts = response.json()["data"]
         return dts
 
     def get_data_total(
         self,
         data_type: str,
-        symbol: str = "",
-        start: str = "",
-        end: str = "",
-    ):
+        **kwargs,
+     
+    ):  
+        print("DEBUG", data_type)
         payload = {
             "data_type": data_type,
-            "symbol": symbol,
-            "start": start,
-            "end": end,
         }
-
+        payload.update(kwargs)
         response = self._client.post(f"{self.api_url}/data-offline/total", json=payload)
 
-        response.raise_for_status()
+        raise_err_with_details(response)
         total = response.json()["data"]
         try:
             total = int(total)
@@ -119,9 +96,6 @@ class JiuhuangData:
     def get_data(
         self,
         data_type: str,
-        symbol: str = "",
-        start: str = "",
-        end: str = "",
         remote: bool = False,
         **kwargs,
     ):
@@ -132,16 +106,13 @@ class JiuhuangData:
         historical data based on the specified parameters.
 
         :param data_type: Type of data to retrieve (e.g., 'index_global_hist_em')
-        :param symbol: Symbol or identifier for the data series
-        :param start: Start date for the data range (format: YYYY-MM-DD)
-        :param end: End date for the data range (format: YYYY-MM-DD)
         :param remote: Force fetch data form remote
         """
         data = None
         if not remote:
             kw = {k: v for k, v in kwargs.items() if k != "remote"}
             data = self._cache.get_data(
-                data_type, symbol=symbol, start=start, end=end, **kw
+                data_type, **kw
             )
 
             if not data.empty:
@@ -150,15 +121,11 @@ class JiuhuangData:
         url = f"{self.api_url}/data-offline/"
         payload = {
             "data_type": data_type,
-            "symbol": symbol,
-            "start": start,
-            "end": end,
-            "batch_size": 1000,
-            "stream": True,
         }
+        payload.update(kwargs)
         all_data = []
         with self._client.stream("POST", url, json=payload) as response:
-            response.raise_for_status()
+            raise_err_with_details(response, read_body=True)
             for chunk in response.iter_lines():
                 if chunk:
                     try:
@@ -188,30 +155,33 @@ class _DataCache:
             rprint("[red]Warning: 请确保只有单个正在运行的JiuhuangData实例[/red]")
             sys.exit(1)
 
-        for t in _CACHE_LOOKBACK_DAYS.keys():
-            # 获取 DDL 并创建表
-            resp = self._jd._client.get(
-                self._jd.api_url + "/data-offline/ddl", params={"data_type": t}
-            )
-            if resp.status_code == 200:
-                ddl = resp.json()["data"]
-                seq_match = re.search(r"nextval\('(\w+)'\)\)?" , ddl)
-                if seq_match:
-                    seq_name = seq_match.group(1)
-                    try:
-                        conn.execute(f"CREATE SEQUENCE IF NOT EXISTS {seq_name}")
-                    except Exception:
-                        pass
-                conn.execute(ddl)
+        data_types = list(_CACHE_LOOKBACK_DAYS.keys())
 
-            # 获取 table_fields
-            resp = self._jd._client.get(
-                self._jd.api_url + "/data-offline/table_fields",
-                params={"data_type": t},
-            )
-            if resp.status_code == 200:
-                fields = resp.json()["data"]
-                self._table_fields.update({t: fields})
+        # 批量获取 DDL
+        resp = self._jd._client.get(
+            self._jd.api_url + "/data-offline/ddl", params={"data_types": data_types}
+        )
+        if resp.status_code == 200:
+            ddl_dict = resp.json()["data"]
+            for ddl in ddl_dict.values():
+                if ddl:
+                    seq_match = re.search(r"nextval\('(\w+)'\)\)?" , ddl)
+                    if seq_match:
+                        seq_name = seq_match.group(1)
+                        try:
+                            conn.execute(f"CREATE SEQUENCE IF NOT EXISTS {seq_name}")
+                        except Exception:
+                            pass
+                    conn.execute(ddl)
+
+        # 批量获取 table_fields
+        resp = self._jd._client.get(
+            self._jd.api_url + "/data-offline/table_fields",
+            params={"data_types": data_types},
+        )
+        if resp.status_code == 200:
+            fields_dict = resp.json()["data"]
+            self._table_fields.update(fields_dict)
 
         conn.close()
 
@@ -305,6 +275,59 @@ class _DataReconciler:
             for data_type in _CACHE_LOOKBACK_DAYS.keys():
                 self._reconcile_table(data_type, progress)
 
+    def _reconcile_table_full(self, data_type, progress):
+        """
+        全量同步逻辑 (当 lookback_days 为 None 时):
+        - 对比本地和远程数据总量
+        - 如果一致则跳过，否则获取远程全量数据同步
+        """
+        task_id = progress.add_task(f"Full Sync {data_type}", total=1)
+        local_total = self.local_getter.get_data_total(data_type)
+        remote_total = self.remote_getter.get_data_total(data_type)
+
+        if local_total == remote_total:
+            progress.update(
+                task_id,
+                completed=1,
+                description=f"[green]✔ {data_type} Already Consistent ({local_total} rows)",
+            )
+            return
+
+        progress.console.print(
+            f"[yellow]‼ {data_type} mismatch ({local_total} vs {remote_total}). Syncing...[/yellow]"
+        )
+
+        # 获取远程全量数据
+        remote_data = self.remote_getter.get_data(data_type, remote=True)
+
+        if remote_data is not None and not remote_data.empty:
+            actual_remote_total = len(remote_data)
+            progress.console.print(
+                f"[cyan]→ Fetched {actual_remote_total} rows from remote for {data_type}[/cyan]"
+            )
+
+            # 删除本地全量数据
+            conn = duckdb.connect(self.local_getter.cache_db_path)
+            conn.execute(f"DELETE FROM {data_type}")
+            conn.close()
+
+            progress.update(task_id, advance=0.5)
+
+            # 导入远程数据
+            self.local_getter.bulk_import(data_type, remote_data)
+
+            progress.update(
+                task_id,
+                completed=1,
+                description=f"[green]✔ {data_type} Full Sync Complete",
+            )
+        else:
+            progress.update(
+                task_id,
+                completed=1,
+                description=f"[yellow]⚠ {data_type} No remote data found",
+            )
+
     def _reconcile_table(self, data_type, progress):
         """
         对账逻辑:
@@ -319,7 +342,12 @@ class _DataReconciler:
             直到 limit_date
         """
         today = datetime.today()
-        lookback_days = _CACHE_LOOKBACK_DAYS.get(data_type, 0)
+        lookback_days = _CACHE_LOOKBACK_DAYS.get(data_type)
+
+        # 如果 lookback_days 为 None，执行全量同步
+        if lookback_days is None:
+            self._reconcile_table_full(data_type, progress)
+            return
 
         limit_date = today - timedelta(days=lookback_days)
         start_limit_str = limit_date.strftime("%Y-%m-%d")
@@ -343,7 +371,7 @@ class _DataReconciler:
             progress.update(
                 task_id,
                 completed=lookback_days,
-                description=f"[green]✔ {data_type} Already Consistent (Total: {g_local})",
+                description=f"[green]✔ {data_type} Already Consistent",
             )
             return
 
