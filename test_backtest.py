@@ -13,6 +13,7 @@ def main():
     strategies = {
         "海龟": StrategyTurtle(entry_window=20, exit_window=10),
         "移动均线交叉": StrategyMovingAverageCrossover(12, 24),
+        "均值回归": StrategyMeanReversion(),
         "保持持有": StrategyBuyAndHold(),
     }
 
