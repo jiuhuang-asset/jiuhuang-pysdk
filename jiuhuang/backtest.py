@@ -53,9 +53,8 @@ def evaluate_strategies(
     use_next_day_return: bool = True,
     metric_func: Callable = cal_metrics,
     rmps: Dict[str, RiskManagementParams] = {},
-    return_trading_history: bool = False,
     commission_rate: float = 0.0002,
-    stamp_tax_rate: float = 0.001,
+    stamp_tax_rate: float = 0.0005,
 ) -> pd.DataFrame:
     perf_results: dict[str, pd.Series] = {}
     _trading_history_datas = []
@@ -86,9 +85,8 @@ def evaluate_strategies(
         strat_trading_histroy = calculate_strategy_returns(df_with_pos, commission_rate, stamp_tax_rate)
         metric_series = metric_func(strat_trading_histroy)
         perf_results[strat_name] = metric_series
-        if return_trading_history:
-            strat_trading_histroy["strategy"] = strat_name
-            _trading_history_datas.append(strat_trading_histroy)
+        strat_trading_histroy["strategy"] = strat_name
+        _trading_history_datas.append(strat_trading_histroy)
     # Combine into a DataFrame. Use union of stock_codes present in any result
     combined = pd.DataFrame(perf_results)
     combined = combined.reset_index()
@@ -102,10 +100,9 @@ def backtest(
     stock_info: pd.DataFrame  = pd.DataFrame(),
     rmps: Dict[str, RiskManagementParams] = {},
     commission_rate: float = 0.0002,
-    stamp_tax_rate: float = 0.001,
+    stamp_tax_rate: float = 0.0005,
     metric_decimal: int = 2,
     use_next_day_return: bool = True,
-    return_trading_history: bool = False,
 ):
     if hist_price_data.empty:
         print("没有价格数据")
@@ -116,7 +113,6 @@ def backtest(
         metric_func=lambda d: cal_metrics_from_returns(d),
         rmps=rmps,
         use_next_day_return=use_next_day_return,
-        return_trading_history=return_trading_history,
         commission_rate=commission_rate,
         stamp_tax_rate=stamp_tax_rate,
     )

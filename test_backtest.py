@@ -63,9 +63,6 @@ def main():
         strategies,
         stock_price,
         stock_info,
-        commission_rate=0.00002,
-        use_next_day_return=True,
-        return_trading_history=True
     )
     # breakpoint()
     # print("trading history data:",trading_history.shape)

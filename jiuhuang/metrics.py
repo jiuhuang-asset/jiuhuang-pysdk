@@ -29,7 +29,7 @@ def calculate_strategy_returns(
     Args:
         df: DataFrame with stock data and positions
         commission_rate: 买卖双向手续费率
-        stamp_tax_rate: 印花税率，仅对卖出收取 (默认 0.001 = 0.1%)
+        stamp_tax_rate: 印花税率，仅对卖出收取 (默认 0.0005 = 0.05%)
 
     Returns:
         DataFrame with added 'strategy_return' column
@@ -79,7 +79,7 @@ def calculate_strategy_returns(
 
 
 def cal_metrics(
-    df: pd.DataFrame, commission_rate: float = 0.0002, stamp_tax_rate: float = 0.001
+    df: pd.DataFrame, commission_rate: float = 0.0002, stamp_tax_rate: float = 0.0005
 ) -> pd.Series:
     """
     Calculate multiple strategy metrics using quantstats for each symbol.
