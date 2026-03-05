@@ -2,7 +2,7 @@ import pandas as pd
 from typing import Dict, Callable
 from .strategy import Strategy
 from .risk_management import RiskManagementParams, risk_management_one_symbol
-from .metrics import cal_metrics
+from .metrics import cal_metrics, cal_metrics_from_returns, calculate_strategy_returns
 
 
 def build_position(
@@ -54,17 +54,24 @@ def evaluate_strategies(
     metric_func: Callable = cal_metrics,
     rmps: Dict[str, RiskManagementParams] = {},
     return_trading_history: bool = False,
+    commission_rate: float = 0.0002,
+    stamp_tax_rate: float = 0.001,
 ) -> pd.DataFrame:
-    results: dict[str, pd.Series] = {}
-    _plot_data_cols = price.columns.to_list() + [
+    perf_results: dict[str, pd.Series] = {}
+    _trading_history_datas = []
+    _trading_history_cols = price.columns.to_list() + [
         "buy_signal",
         "sell_signal",
         "position",
         "strategy",
+        "strategy_return",
+        "cumulative_return",
+        "drawdown",
     ]
-    if "created_at" in _plot_data_cols:
-        _plot_data_cols.remove("created_at")
-    _plot_datas = []
+    if "created_at" in  _trading_history_cols:
+        _trading_history_cols.remove("created_at")
+
+
     for strat_name, strat in strategies.items():
         df_sig = strat(price)
         rmp = rmps.get(strat_name, RiskManagementParams())
@@ -75,17 +82,18 @@ def evaluate_strategies(
             use_next_day_return=use_next_day_return,
             rmp=rmp,
         )
-        metric_series = metric_func(df_with_pos)
-        results[strat_name] = metric_series
-
+        # Calculate strategy returns (includes cumulative_return)
+        strat_trading_histroy = calculate_strategy_returns(df_with_pos, commission_rate, stamp_tax_rate)
+        metric_series = metric_func(strat_trading_histroy)
+        perf_results[strat_name] = metric_series
         if return_trading_history:
-            df_with_pos["strategy"] = strat_name
-            _plot_datas.append(df_with_pos)
+            strat_trading_histroy["strategy"] = strat_name
+            _trading_history_datas.append(strat_trading_histroy)
     # Combine into a DataFrame. Use union of stock_codes present in any result
-    combined = pd.DataFrame(results)
+    combined = pd.DataFrame(perf_results)
     combined = combined.reset_index()
-    combined = combined.rename(columns={"level_0": "symbol", "level_1": "metric"})
-    return combined, pd.concat(_plot_datas).reset_index()[_plot_data_cols]
+    combined_performance = combined.rename(columns={"level_0": "symbol", "level_1": "metric"})
+    return combined_performance, pd.concat(_trading_history_datas).reset_index()[_trading_history_cols]
 
 
 def backtest(
@@ -105,10 +113,12 @@ def backtest(
     eval_results, trading_history = evaluate_strategies(
         hist_price_data,
         strategies,
-        metric_func=lambda d: cal_metrics(d, commission_rate, stamp_tax_rate),
+        metric_func=lambda d: cal_metrics_from_returns(d),
         rmps=rmps,
         use_next_day_return=use_next_day_return,
-        return_trading_history=return_trading_history
+        return_trading_history=return_trading_history,
+        commission_rate=commission_rate,
+        stamp_tax_rate=stamp_tax_rate,
     )
     eval_results = eval_results.round(metric_decimal)
     melted_eval_results = eval_results.melt(

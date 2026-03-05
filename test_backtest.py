@@ -67,6 +67,8 @@ def main():
         use_next_day_return=True,
         return_trading_history=True
     )
+    # breakpoint()
+    # print("trading history data:",trading_history.shape)
     display_backtesting(trading_history, backtest_perf)
   
 

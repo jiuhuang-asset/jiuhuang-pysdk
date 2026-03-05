@@ -18,6 +18,9 @@ class BacktestingView:
                     "buy_signal",
                     "sell_signal",
                     "strategy",
+                    "strategy_return",
+                    "cumulative_return",  
+                    "drawdown"
                 ]
             ]
             .assign(date=lambda x: x["date"].dt.strftime("%Y-%m-%d"))

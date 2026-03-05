@@ -3,7 +3,7 @@ import quantstats as qs
 import numpy as np
 
 
-__all__ = ["cal_metrics"]
+__all__ = ["cal_metrics", "cal_metrics_from_returns"]
 
 
 def calculate_returns(df: pd.DataFrame, key="symbol") -> pd.DataFrame:
@@ -22,7 +22,7 @@ def calculate_returns(df: pd.DataFrame, key="symbol") -> pd.DataFrame:
 
 
 def calculate_strategy_returns(
-    df: pd.DataFrame, commission_rate: float = 0.0002, stamp_tax_rate: float = 0.001
+    df: pd.DataFrame, commission_rate: float = 0, stamp_tax_rate: float = 0
 ) -> pd.DataFrame:
     """Calculate strategy returns based on position and market returns, including transaction fees.
 
@@ -59,6 +59,17 @@ def calculate_strategy_returns(
     result_df["strategy_return"] = (
         result_df["strategy_return"] - result_df["total_fees"]
     )
+
+    # Calculate cumulative return
+    result_df["cumulative_return"] = result_df.groupby("symbol")["strategy_return"].transform(
+        lambda x: (1 + x).cumprod() - 1
+    )
+
+    # Calculate max drawdown
+    result_df["drawdown"] = result_df.groupby("symbol")["cumulative_return"].transform(
+        lambda x: (x.cummax() - x) / (1 + x.cummax())
+    )
+
     result_df = result_df.drop(
         ["prev_position", "is_selling", "commission_fee", "selling_fee", "total_fees"],
         axis=1,
@@ -99,6 +110,49 @@ def cal_metrics(
         returns = group.set_index("date")["strategy_return"]
 
         # Compute metrics using quantstats
+        cagr = qs.stats.cagr(returns)
+        max_dd = qs.stats.max_drawdown(returns)
+        win_rate = (returns > 0).mean()
+        sharpe = qs.stats.sharpe(returns)
+        calmar = qs.stats.calmar(returns)
+        sortino = qs.stats.sortino(returns)
+        volatility = qs.stats.volatility(returns)
+        var = qs.stats.value_at_risk(returns)
+
+        symbol_results = pd.Series(
+            [cagr, max_dd, win_rate, sharpe, calmar, sortino, volatility, var],
+            index=pd.MultiIndex.from_product([[symbol], metrics]),
+        )
+        results.append(symbol_results)
+
+    combined_series = pd.concat(results)
+    return combined_series
+
+
+def cal_metrics_from_returns(df: pd.DataFrame) -> pd.Series:
+    """Calculate metrics from already computed strategy returns.
+
+    Args:
+        df: DataFrame with stock data and 'strategy_return' column already calculated.
+
+    Returns:
+        pd.Series with multi-level index (metric_name, symbol).
+    """
+    metrics = [
+        "年化收益率",
+        "最大回撤",
+        "胜率",
+        "夏普比率",
+        "卡玛比率",
+        "索提诺比率",
+        "年化波动率",
+        "风险价值(VaR)",
+    ]
+
+    results = []
+    for symbol, group in df.groupby("symbol"):
+        returns = group.set_index("date")["strategy_return"]
+
         cagr = qs.stats.cagr(returns)
         max_dd = qs.stats.max_drawdown(returns)
         win_rate = (returns > 0).mean()
