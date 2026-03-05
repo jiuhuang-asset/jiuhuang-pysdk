@@ -50,11 +50,10 @@ def build_position(
 def evaluate_strategies(
     price: pd.DataFrame,
     strategies: dict[str, Strategy],
-    symbols: list | None = None,
     use_next_day_return: bool = True,
     metric_func: Callable = cal_metrics,
     rmps: Dict[str, RiskManagementParams] = {},
-    return_plot_data: bool = False,
+    return_trading_history: bool = False,
 ) -> pd.DataFrame:
     results: dict[str, pd.Series] = {}
     _plot_data_cols = price.columns.to_list() + [
@@ -79,7 +78,7 @@ def evaluate_strategies(
         metric_series = metric_func(df_with_pos)
         results[strat_name] = metric_series
 
-        if return_plot_data:
+        if return_trading_history:
             df_with_pos["strategy"] = strat_name
             _plot_datas.append(df_with_pos)
     # Combine into a DataFrame. Use union of stock_codes present in any result
@@ -96,20 +95,20 @@ def backtest(
     rmps: Dict[str, RiskManagementParams] = {},
     commission_rate: float = 0.0002,
     stamp_tax_rate: float = 0.001,
-    return_plot_data: bool = False,
     metric_decimal: int = 2,
     use_next_day_return: bool = True,
+    return_trading_history: bool = False,
 ):
     if hist_price_data.empty:
         print("没有价格数据")
         return
-    eval_results, plot_data = evaluate_strategies(
+    eval_results, trading_history = evaluate_strategies(
         hist_price_data,
         strategies,
         metric_func=lambda d: cal_metrics(d, commission_rate, stamp_tax_rate),
         rmps=rmps,
-        return_plot_data=return_plot_data,
         use_next_day_return=use_next_day_return,
+        return_trading_history=return_trading_history
     )
     eval_results = eval_results.round(metric_decimal)
     melted_eval_results = eval_results.melt(
@@ -129,6 +128,6 @@ def backtest(
     reshaped_eval_results.columns.name = None  # Remove the 'metric' label from columns
 
     if not stock_info.empty:
-        reshaped_eval_results = reshaped_eval_results.merge(stock_info[["symbol", "symbol_name", "industry"]].drop_duplicates(), on="symbol", how="left")
+        reshaped_eval_results = reshaped_eval_results.merge(stock_info[["symbol", "name", "industry"]].drop_duplicates(), on="symbol", how="left")
     
-    return reshaped_eval_results, plot_data
+    return trading_history, reshaped_eval_results

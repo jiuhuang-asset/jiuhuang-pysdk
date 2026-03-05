@@ -120,12 +120,12 @@ def filter_st(fundamental_data: pd.DataFrame):
         assert "symbol" in fundamental_data.columns
         data = pd.merge(
             candidates,
-            fundamental_data[["symbol", "symbol_name"]],
+            fundamental_data[["symbol", "name"]],
             on="symbol",
             how="left",
         )
         try:
-            data = data[~data["symbol_name"].str.contains("ST", case=True)]
+            data = data[~data["name"].str.contains("ST", case=True)]
             return data
 
         except Exception as e:

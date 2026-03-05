@@ -20,6 +20,7 @@ from rich.progress import (
 from rich import print as rprint
 from .utils import raise_err_with_details
 
+
 load_dotenv()
 
 __all__ = ["JiuhuangData"]
@@ -30,9 +31,9 @@ _CACHE_LOOKBACK_DAYS = {
     "stock_zh_a_hist_d": 365 * 5,
     "stock_zh_a_hist_d_qfq": 365 * 5,
     "stock_zh_a_hist_d_hfq": 365 * 5,
-    "stock_zcfz_em": 365 * 5,
-    "stock_lrb_em": 365 * 5,
-    "stock_xjll_em": 365 * 5,  
+    "stock_zcfz_em": None,
+    "stock_lrb_em": None,
+    "stock_xjll_em": None,  
 }
 
 class JiuhuangData:
@@ -77,7 +78,6 @@ class JiuhuangData:
         **kwargs,
      
     ):  
-        print("DEBUG", data_type)
         payload = {
             "data_type": data_type,
         }
@@ -136,7 +136,7 @@ class JiuhuangData:
                         raise Exception("获取数据失败[Json解码错误]")
 
         return pd.DataFrame(all_data)
-
+    
 
 class _DataCache:
     def __init__(self, jd: JiuhuangData):
@@ -187,6 +187,10 @@ class _DataCache:
 
     def _build_filter_sql(self, table_name: str, kwargs: dict) -> str:
         """构建 WHERE 条件SQL片段"""
+        # 验证日期参数格式
+        _validate_date(kwargs.get("start"), "start")
+        _validate_date(kwargs.get("end"), "end")
+
         table_fields = self._table_fields[table_name]
         sql = "WHERE 1=1"
 
@@ -208,7 +212,6 @@ class _DataCache:
 
         where_sql = self._build_filter_sql(table_name, kwargs)
         sql = f"SELECT * FROM {table_name} {where_sql}"
-
         conn = duckdb.connect(self.cache_db_path)
         data = conn.sql(sql).to_df()
         conn.close()
@@ -276,11 +279,6 @@ class _DataReconciler:
                 self._reconcile_table(data_type, progress)
 
     def _reconcile_table_full(self, data_type, progress):
-        """
-        全量同步逻辑 (当 lookback_days 为 None 时):
-        - 对比本地和远程数据总量
-        - 如果一致则跳过，否则获取远程全量数据同步
-        """
         task_id = progress.add_task(f"Full Sync {data_type}", total=1)
         local_total = self.local_getter.get_data_total(data_type)
         remote_total = self.remote_getter.get_data_total(data_type)
@@ -289,7 +287,7 @@ class _DataReconciler:
             progress.update(
                 task_id,
                 completed=1,
-                description=f"[green]✔ {data_type} Already Consistent ({local_total} rows)",
+                description=f"[green]✔ {data_type}",
             )
             return
 
@@ -371,7 +369,7 @@ class _DataReconciler:
             progress.update(
                 task_id,
                 completed=lookback_days,
-                description=f"[green]✔ {data_type} Already Consistent",
+                description=f"[green]✔ {data_type}",
             )
             return
 
@@ -426,3 +424,18 @@ class _DataReconciler:
             current_end_dt = current_start_dt - timedelta(days=1)
 
         progress.update(task_id, description=f"[green]✔ {data_type} Fixed and Synced")
+
+
+
+
+
+def _validate_date(date_str: str, param_name: str) -> None:
+    """验证日期参数格式，无效则抛出 ValueError"""
+    # 日期格式验证正则: YYYY-MM-DD
+    _DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+    if not date_str:
+        return
+    if not _DATE_PATTERN.match(date_str):
+        raise ValueError(
+            f"Invalid date format for '{param_name}': '{date_str}'. Expected format: YYYY-MM-DD (e.g., '2025-01-01')"
+        )

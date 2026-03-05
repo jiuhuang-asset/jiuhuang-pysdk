@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(uv run python test_backtest.py)",
-      "Bash(python -c \":*)"
+      "Bash(python -c \":*)",
+      "Bash(./build-and-deploy.bat)"
+    ],
+    "additionalDirectories": [
+      "E:\\个人\\jiuhuang-asset\\dashboards\\bt-dashboard\\src"
     ]
   }
 }

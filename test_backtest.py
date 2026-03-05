@@ -7,17 +7,13 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-jh_data = JiuhuangData()
-
+jh_data = JiuhuangData(sync=False)
 
 def main():
     strategies = {
-        "保持持有": StrategyBuyAndHold(),
         "海龟": StrategyTurtle(entry_window=20, exit_window=10),
-        # "量价趋势": StrategyVolumeTrend(),
-        # "量价背离": StrategyVolumeDivergence(volume_trend_threshold=0.05),
-        # "均值回归": StrategyMeanReversion(deviation_threshold=0.05),
-        "移动均线交叉": StrategyMovingAverageCrossover(10, 20),
+        "移动均线交叉": StrategyMovingAverageCrossover(12, 24),
+        "保持持有": StrategyBuyAndHold(),
     }
 
     # 获取股票数据
@@ -56,25 +52,22 @@ def main():
     stock_price = jh_data.get_data(
         "stock_zh_a_hist_d_qfq",
         start="2025-01-01",
-        end="2026-02-06 错误的时间cuo",
+        end="2026-02-06", 
     ).query("symbol in @symbols")
-    
+
     stock_info = jh_data.get_data(
         "stock_individual_info_em",
-        # remote=True,
     )
 
-    breakpoint()
-    backtest_result_df, plot_data = backtest(
+    trading_history , backtest_perf = backtest(
         strategies,
         stock_price,
         stock_info,
-        return_plot_data=True,
         commission_rate=0.00002,
         use_next_day_return=True,
+        return_trading_history=True
     )
-
-    display_backtesting(plot_data, backtest_result_df)
+    display_backtesting(trading_history, backtest_perf)
   
 
 
