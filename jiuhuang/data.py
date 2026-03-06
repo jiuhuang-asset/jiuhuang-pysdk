@@ -51,14 +51,11 @@ class JiuhuangData:
         self,
         api_key: str = getenv("JIUHUANG_API_KEY"),
         api_url: str = getenv("JIUHUANG_API_URL"),
-        sync: bool = False,
     ):
         self.api_key = api_key
         self.api_url = api_url
         self._prepare_client(api_key)
         self._cache = _DataCache(jd=self)
-        # if sync:
-        #     _DataReconciler(self._cache, self).reconcile_all()
 
     def _prepare_client(self, api_key: str):
         client = httpx.Client(timeout=180)
