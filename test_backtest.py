@@ -7,7 +7,8 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-jh_data = JiuhuangData(sync=False)
+jh_data = JiuhuangData()
+
 
 def main():
     strategies = {
@@ -53,14 +54,14 @@ def main():
     stock_price = jh_data.get_data(
         "stock_zh_a_hist_d_qfq",
         start="2025-01-01",
-        end="2026-02-06", 
-    ).query("symbol in @symbols")
-
+        end="2026-02-06",
+        symbol=",".join(symbols),
+    )
     stock_info = jh_data.get_data(
         "stock_individual_info_em",
     )
 
-    trading_history , backtest_perf = backtest(
+    trading_history, backtest_perf = backtest(
         strategies,
         stock_price,
         stock_info,
@@ -68,7 +69,6 @@ def main():
     # breakpoint()
     # print("trading history data:",trading_history.shape)
     display_backtesting(trading_history, backtest_perf)
-  
 
 
 if __name__ == "__main__":

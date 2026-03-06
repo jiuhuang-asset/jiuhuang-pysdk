@@ -67,9 +67,8 @@ def evaluate_strategies(
         "cumulative_return",
         "drawdown",
     ]
-    if "created_at" in  _trading_history_cols:
+    if "created_at" in _trading_history_cols:
         _trading_history_cols.remove("created_at")
-
 
     for strat_name, strat in strategies.items():
         df_sig = strat(price)
@@ -82,7 +81,9 @@ def evaluate_strategies(
             rmp=rmp,
         )
         # Calculate strategy returns (includes cumulative_return)
-        strat_trading_histroy = calculate_strategy_returns(df_with_pos, commission_rate, stamp_tax_rate)
+        strat_trading_histroy = calculate_strategy_returns(
+            df_with_pos, commission_rate, stamp_tax_rate
+        )
         metric_series = metric_func(strat_trading_histroy)
         perf_results[strat_name] = metric_series
         strat_trading_histroy["strategy"] = strat_name
@@ -90,14 +91,19 @@ def evaluate_strategies(
     # Combine into a DataFrame. Use union of stock_codes present in any result
     combined = pd.DataFrame(perf_results)
     combined = combined.reset_index()
-    combined_performance = combined.rename(columns={"level_0": "symbol", "level_1": "metric"})
-    return combined_performance, pd.concat(_trading_history_datas).reset_index()[_trading_history_cols]
+    combined_performance = combined.rename(
+        columns={"level_0": "symbol", "level_1": "metric"}
+    )
+    return (
+        combined_performance,
+        pd.concat(_trading_history_datas).reset_index()[_trading_history_cols],
+    )
 
 
 def backtest(
     strategies: Dict[str, Strategy],
     hist_price_data: pd.DataFrame,
-    stock_info: pd.DataFrame  = pd.DataFrame(),
+    stock_info: pd.DataFrame = pd.DataFrame(),
     rmps: Dict[str, RiskManagementParams] = {},
     commission_rate: float = 0.0002,
     stamp_tax_rate: float = 0.0005,
@@ -118,22 +124,22 @@ def backtest(
     )
     eval_results = eval_results.round(metric_decimal)
     melted_eval_results = eval_results.melt(
-        id_vars=['symbol', 'metric'], 
-        var_name='strategy', 
-        value_name='value'
+        id_vars=["symbol", "metric"], var_name="strategy", value_name="value"
     )
 
     # Step 2: Pivot the melted DataFrame to spread metrics into columns
     reshaped_eval_results = melted_eval_results.pivot_table(
-        index=['symbol', 'strategy'], 
-        columns='metric', 
-        values='value'
+        index=["symbol", "strategy"], columns="metric", values="value"
     ).reset_index()
 
     # Optional: Flatten column names if needed
     reshaped_eval_results.columns.name = None  # Remove the 'metric' label from columns
 
     if not stock_info.empty:
-        reshaped_eval_results = reshaped_eval_results.merge(stock_info[["symbol", "name", "industry"]].drop_duplicates(), on="symbol", how="left")
-    
+        reshaped_eval_results = reshaped_eval_results.merge(
+            stock_info[["symbol", "name", "industry"]].drop_duplicates(),
+            on="symbol",
+            how="left",
+        )
+
     return trading_history, reshaped_eval_results

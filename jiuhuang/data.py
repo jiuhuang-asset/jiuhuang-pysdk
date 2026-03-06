@@ -1,7 +1,6 @@
 import re
 import httpx
 import json
-import tempfile
 import sys
 import pandas as pd
 from os import getenv
@@ -33,22 +32,33 @@ _CACHE_LOOKBACK_DAYS = {
     "stock_zh_a_hist_d_hfq": 365 * 5,
     "stock_zcfz_em": None,
     "stock_lrb_em": None,
-    "stock_xjll_em": None,  
+    "stock_xjll_em": None,
 }
+
+_CACHE_TABLE_UNIQUE_KEYS = {
+    "stock_info_a_code_name": ["code"],
+    "stock_zh_a_hist_d": ["date", "symbol"],
+    "stock_zh_a_hist_d_qfq": ["date", "symbol"],
+    "stock_zh_a_hist_d_hfq": ["date", "symbol"],
+    "stock_zcfz_em": ["date", "symbol"],
+    "stock_lrb_em": ["date", "symbol"],
+    "stock_xjll_em": ["date", "symbol"],
+}
+
 
 class JiuhuangData:
     def __init__(
         self,
         api_key: str = getenv("JIUHUANG_API_KEY"),
         api_url: str = getenv("JIUHUANG_API_URL"),
-        sync: bool = True,
+        sync: bool = False,
     ):
         self.api_key = api_key
         self.api_url = api_url
         self._prepare_client(api_key)
         self._cache = _DataCache(jd=self)
-        if sync:
-            _DataReconciler(self._cache, self).reconcile_all()
+        # if sync:
+        #     _DataReconciler(self._cache, self).reconcile_all()
 
     def _prepare_client(self, api_key: str):
         client = httpx.Client(timeout=180)
@@ -76,8 +86,7 @@ class JiuhuangData:
         self,
         data_type: str,
         **kwargs,
-     
-    ):  
+    ):
         payload = {
             "data_type": data_type,
         }
@@ -111,11 +120,9 @@ class JiuhuangData:
         data = None
         if not remote:
             kw = {k: v for k, v in kwargs.items() if k != "remote"}
-            data = self._cache.get_data(
-                data_type, **kw
-            )
-
-            if not data.empty:
+            data = self._cache.get_data(data_type, **kw)
+            remote_data_count = self.get_data_total(data_type=data_type, **kwargs)
+            if not data.empty and (len(data) == remote_data_count):
                 return data
 
         url = f"{self.api_url}/data-offline/"
@@ -134,9 +141,10 @@ class JiuhuangData:
                         all_data.extend(data)
                     except json.JSONDecodeError as e:
                         raise Exception("获取数据失败[Json解码错误]")
+        data = pd.DataFrame(all_data)
+        self._cache.bulk_import(data_type, data)
+        return data
 
-        return pd.DataFrame(all_data)
-    
 
 class _DataCache:
     def __init__(self, jd: JiuhuangData):
@@ -165,7 +173,7 @@ class _DataCache:
             ddl_dict = resp.json()["data"]
             for ddl in ddl_dict.values():
                 if ddl:
-                    seq_match = re.search(r"nextval\('(\w+)'\)\)?" , ddl)
+                    seq_match = re.search(r"nextval\('(\w+)'\)\)?", ddl)
                     if seq_match:
                         seq_name = seq_match.group(1)
                         try:
@@ -201,8 +209,17 @@ class _DataCache:
             sql += f" AND date <= '{kwargs['end']}'"
 
         if "symbol" in kwargs and kwargs["symbol"] and "symbol" in table_fields:
-            sql += f" AND symbol = '{kwargs['symbol']}'"
-
+            symbol_value = kwargs["symbol"]
+            # 验证 symbol 格式（长度 <= 12）
+            _validate_symbol(symbol_value)
+            # 处理逗号分隔的 symbol 字符串
+            if isinstance(symbol_value, str) and "," in symbol_value:
+                symbols = [s.strip() for s in symbol_value.split(",")]
+                symbol_list = ", ".join([f"'{s}'" for s in symbols])
+                sql += f" AND symbol IN ({symbol_list})"
+            else:
+                # 单个 symbol，直接使用
+                sql += f" AND symbol = '{symbol_value}'"
         return sql
 
     def get_data(self, data_type, **kwargs):
@@ -228,35 +245,142 @@ class _DataCache:
         return count
 
     def bulk_import(self, data_type: str, data: pd.DataFrame):
-        """批量导入数据到缓存
+        """批量导入数据到缓存（支持 upsert）
 
         Args:
             data_type: 表名
             data: pandas DataFrame
         """
-        if data.empty:
+        if data_type not in _CACHE_LOOKBACK_DAYS or data.empty:
             return
-
         table_name = data_type
         data = data.replace("NaN", None)
+
+        # 获取 unique_keys
+        unique_keys = _CACHE_TABLE_UNIQUE_KEYS.get(data_type)
+
         conn = duckdb.connect(self.cache_db_path)
 
-        with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as f:
-            temp_path = f.name
+        try:
+            # 注册临时 DataFrame
+            conn.register("temp_df", data)
+
+            # 获取表字段
+            table_fields = self._table_fields.get(table_name, list(data.columns))
+
+            if unique_keys:
+                # Upsert 模式：使用 MERGE 语句
+                self._bulk_upsert_df(conn, table_name, unique_keys, table_fields, data)
+                print(f"Successfully upserted {len(data)} records into {table_name}")
+            else:
+                # 插入模式：使用 COPY
+                self._bulk_insert_df(conn, table_name, table_fields, data)
+                print(f"Successfully inserted {len(data)} records into {table_name}")
+
+        except Exception as e:
+            print(f"Error importing data: {e}")
+            raise
+        finally:
+            conn.unregister("temp_df")
+            conn.close()
+
+    def _bulk_insert_df(
+        self,
+        conn,
+        table_name: str,
+        table_fields: list,
+        data: pd.DataFrame,
+    ):
+        """简单批量插入（无冲突处理）"""
+        # 只包含存在于 data 中的列
+        data_columns = list(data.columns)
+        insert_columns = [col for col in table_fields if col in data_columns]
+
+        if not insert_columns:
+            return
+
+        column_list = ", ".join([f'"{col}"' for col in insert_columns])
+        copy_sql = f"""
+            INSERT INTO {table_name} ({column_list})
+            SELECT {column_list} FROM temp_df
+        """
+        conn.execute(copy_sql)
+
+    def _bulk_upsert_df(
+        self,
+        conn,
+        table_name: str,
+        unique_keys: list,
+        table_fields: list,
+        data: pd.DataFrame,
+    ):
+        """Upsert 数据到 DuckDB（基于唯一键的冲突解决）"""
+        # 只包含存在于 data 中的列
+        data_columns = list(data.columns)
+        insert_columns = [col for col in table_fields if col in data_columns]
+
+        if not insert_columns:
+            return
+
+        column_list = ", ".join([f'"{col}"' for col in insert_columns])
+
+        # 构建更新列（非唯一键列）
+        update_columns = [col for col in insert_columns if col not in unique_keys]
+
+        if update_columns:
+            # 使用 EXCLUDED 关键字引用新数据
+            update_set_clause = ", ".join(
+                [f'EXCLUDED."{col}"' for col in update_columns]
+            )
+            update_column_names = ", ".join([f'"{col}"' for col in update_columns])
+
+            merge_sql = f"""
+                INSERT INTO {table_name} ({column_list})
+                SELECT {column_list} FROM temp_df
+                ON CONFLICT ({', '.join([f'"{key}"' for key in unique_keys])})
+                DO UPDATE SET ({update_column_names}) = ({update_set_clause})
+            """
+        else:
+            # 如果没有非键列需要更新，直接忽略冲突
+            merge_sql = f"""
+                INSERT INTO {table_name} ({column_list})
+                SELECT {column_list} FROM temp_df
+                ON CONFLICT ({', '.join([f'"{key}"' for key in unique_keys])})
+                DO NOTHING
+            """
 
         try:
-            # 写入 Parquet 文件
-            data.to_parquet(temp_path, index=False)
+            conn.execute(merge_sql)
+        except Exception as e:
+            print(f"Error executing merge statement: {e}")
+            # 回退到 INSERT ... WHERE NOT EXISTS 方式
+            self._fallback_upsert(conn, table_name, unique_keys, insert_columns)
 
-            # 使用 COPY 高效导入
-            copy_sql = f"COPY {table_name} FROM '{temp_path}' (FORMAT PARQUET)"
-            conn.execute(copy_sql)
-        finally:
-            # 清理临时文件
-            import os
-            os.unlink(temp_path)
+    def _fallback_upsert(
+        self,
+        conn,
+        table_name: str,
+        unique_keys: list,
+        insert_columns: list,
+    ):
+        """回退的 upsert 实现（使用 WHERE NOT EXISTS）"""
+        column_list = ", ".join([f'"{col}"' for col in insert_columns])
 
-        conn.close()
+        # 构建 WHERE NOT EXISTS 条件
+        where_conditions = []
+        for key in unique_keys:
+            where_conditions.append(f't1."{key}" = t2."{key}"')
+        where_clause = " AND ".join(where_conditions)
+
+        insert_sql = f"""
+            INSERT INTO {table_name} ({column_list})
+            SELECT {column_list} FROM temp_df t1
+            WHERE NOT EXISTS (
+                SELECT 1 FROM {table_name} t2
+                WHERE {where_clause}
+            )
+        """
+        conn.execute(insert_sql)
 
 
 class _DataReconciler:
@@ -351,9 +475,7 @@ class _DataReconciler:
         start_limit_str = limit_date.strftime("%Y-%m-%d")
         end_today_str = today.strftime("%Y-%m-%d")
 
-        task_id = progress.add_task(
-            f"Reconciling {data_type}", total=lookback_days
-        )
+        task_id = progress.add_task(f"Reconciling {data_type}", total=lookback_days)
 
         # --- Step 1: 全量对比整个区间 ---
         g_local = self.local_getter.get_data_total(
@@ -405,12 +527,6 @@ class _DataReconciler:
             progress.update(task_id, advance=days_in_window)
 
             if l_total != r_total:
-                # 先删除本地 window 期间的数据，再下载 remote 数据导入
-                conn = duckdb.connect(self.local_getter.cache_db_path)
-                conn.execute(
-                    f"DELETE FROM {data_type} WHERE date >= '{start_str}' AND date <= '{end_str}'"
-                )
-                conn.close()
 
                 # 同步这个窗口的数据
                 remote_data = self.remote_getter.get_data(
@@ -426,9 +542,6 @@ class _DataReconciler:
         progress.update(task_id, description=f"[green]✔ {data_type} Fixed and Synced")
 
 
-
-
-
 def _validate_date(date_str: str, param_name: str) -> None:
     """验证日期参数格式，无效则抛出 ValueError"""
     # 日期格式验证正则: YYYY-MM-DD
@@ -439,3 +552,24 @@ def _validate_date(date_str: str, param_name: str) -> None:
         raise ValueError(
             f"Invalid date format for '{param_name}': '{date_str}'. Expected format: YYYY-MM-DD (e.g., '2025-01-01')"
         )
+
+
+def _validate_symbol(symbol_value: str) -> None:
+    """验证 symbol 参数格式，无效则抛出 ValueError"""
+    if not symbol_value:
+        return
+
+    # 如果是逗号分隔的字符串，验证每个 symbol
+    if isinstance(symbol_value, str) and "," in symbol_value:
+        symbols = [s.strip() for s in symbol_value.split(",")]
+        for sym in symbols:
+            if len(sym) > 12:
+                raise ValueError(
+                    f"Invalid symbol length: '{sym}' (length={len(sym)}). Symbol length must be <= 12"
+                )
+    else:
+        # 单个 symbol
+        if len(symbol_value) > 12:
+            raise ValueError(
+                f"Invalid symbol length: '{symbol_value}' (length={len(symbol_value)}). Symbol length must be <= 12"
+            )

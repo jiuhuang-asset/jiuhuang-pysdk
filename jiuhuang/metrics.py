@@ -61,9 +61,9 @@ def calculate_strategy_returns(
     )
 
     # Calculate cumulative return
-    result_df["cumulative_return"] = result_df.groupby("symbol")["strategy_return"].transform(
-        lambda x: (1 + x).cumprod() - 1
-    )
+    result_df["cumulative_return"] = result_df.groupby("symbol")[
+        "strategy_return"
+    ].transform(lambda x: (1 + x).cumprod() - 1)
 
     # Calculate max drawdown
     result_df["drawdown"] = result_df.groupby("symbol")["cumulative_return"].transform(

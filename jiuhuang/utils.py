@@ -23,15 +23,17 @@ def raise_err_with_details(response, read_body: bool = True) -> None:
         if read_body:
             try:
                 # 对于流式响应，需要读取完整内容
-                if hasattr(response, 'stream'):
+                if hasattr(response, "stream"):
                     # 流式响应：先读取完整内容
-                    error_body = response.read().decode('utf-8')
+                    error_body = response.read().decode("utf-8")
                 else:
                     error_body = response.text
                 error_data = json.loads(error_body)
                 error_msg = error_data.get("detail", error_body)
             except (json.JSONDecodeError, ValueError):
-                error_msg = error_body if 'error_body' in dir() else response.text or error_msg
+                error_msg = (
+                    error_body if "error_body" in dir() else response.text or error_msg
+                )
         raise Exception(f"API error {response.status_code}: {error_msg}")
 
 
