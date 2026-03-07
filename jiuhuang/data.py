@@ -115,11 +115,14 @@ class JiuhuangData:
         :param remote: Force fetch data form remote
         """
         data = None
+        remote_data_count = self.get_data_total(data_type=data_type, **kwargs)
+        if remote_data_count == 0:
+            rprint("没有数据, 请检查参数")
+            return
         if not remote:
             kw = {k: v for k, v in kwargs.items() if k != "remote"}
             data = self._cache.get_data(data_type, **kw)
-            remote_data_count = self.get_data_total(data_type=data_type, **kwargs)
-            if not data.empty and (len(data) == remote_data_count):
+            if len(data) == remote_data_count:
                 return data
 
         url = f"{self.api_url}/data-offline/"
@@ -130,14 +133,23 @@ class JiuhuangData:
         all_data = []
         with self._client.stream("POST", url, json=payload) as response:
             raise_err_with_details(response, read_body=True)
-            for chunk in response.iter_lines():
-                if chunk:
-                    try:
-                        resp = json.loads(chunk)
-                        data = resp["data"]
-                        all_data.extend(data)
-                    except json.JSONDecodeError as e:
-                        raise Exception("获取数据失败[Json解码错误]")
+            with Progress(
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            ) as progress:
+                task_id = progress.add_task(
+                    f"Downloading {data_type}", total=remote_data_count
+                )
+                for chunk in response.iter_lines():
+                    if chunk:
+                        try:
+                            resp = json.loads(chunk)
+                            data = resp["data"]
+                            all_data.extend(data)
+                            progress.update(task_id, completed=len(all_data))
+                        except json.JSONDecodeError as e:
+                            raise Exception("获取数据失败[Json解码错误]")
         data = pd.DataFrame(all_data)
         self._cache.bulk_import(data_type, data)
         return data
@@ -270,7 +282,6 @@ class _DataCache:
                 self._bulk_upsert_df(conn, table_name, unique_keys, table_fields, data)
                 print(f"Successfully upserted {len(data)} records into {table_name}")
             else:
-                # 插入模式：使用 COPY
                 self._bulk_insert_df(conn, table_name, table_fields, data)
                 print(f"Successfully inserted {len(data)} records into {table_name}")
 
