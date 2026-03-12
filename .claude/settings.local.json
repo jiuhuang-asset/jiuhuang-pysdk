@@ -1,17 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(uv run python test_backtest.py)",
       "Bash(python -c \":*)",
-      "Bash(./build-and-deploy.bat)",
-      "Bash(uv run python -c \":*)",
-      "Read(//e/个人/jiuhuang-asset/dashboards/bt-dashboard/**)",
-      "Bash(python -m pytest test_backtest.py -v --tb=short)",
-      "WebFetch(domain:baike.baidu.com)",
-      "WebFetch(domain:finance.sina.com.cn)"
-    ],
-    "additionalDirectories": [
-      "E:\\个人\\jiuhuang-asset\\dashboards\\bt-dashboard\\src"
+      "Bash(python test.py)",
+      "Bash(python test2.py)"
     ]
   }
 }

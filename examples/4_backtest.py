@@ -1,7 +1,8 @@
 from jiuhuang.data import JiuhuangData, DataTypes
-from jiuhuang.strategy import *
+from jiuhuang.strategy import Strategy, StrategyBuyAndHold
 from jiuhuang.backtest import backtest
 from jiuhuang.dash import display_backtesting
+import pandas as pd
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -9,17 +10,40 @@ warnings.filterwarnings("ignore")
 jh_data = JiuhuangData()
 
 
+# 自定义策略, 需要集成Strategy基类，必须实现_execute_one方法(入参：pandas.DataFrame, 输出：pandas.DataFram, 输出需要包含buy_signal和sell_signal两个列)
+# jiuhuang会默认使用多进程并行进行回测， 所以速度很快
+class MyStrategy(Strategy):
+    def __init__(self, entry_window: int = 20, exit_window: int = 10):
+        self.entry_window = entry_window
+        self.exit_window = exit_window
+
+    def _execute_one(self, data: pd.DataFrame) -> pd.DataFrame:
+        """对单个标的生成海龟策略的买卖信号"""
+        data = data.copy()
+
+        # 计算滚动最高价和最低价
+        data["entry_high"] = (
+            data["high"].rolling(window=self.entry_window, min_periods=1).max()
+        )
+        data["exit_low"] = (
+            data["low"].rolling(window=self.exit_window, min_periods=1).min()
+        )
+
+        # Generate signals
+        data["buy_signal"] = (data["close"] > data["entry_high"].shift(1)).astype(int)
+        data["sell_signal"] = (data["close"] < data["exit_low"].shift(1)).astype(int)
+
+        # Clean up temporary columns
+        data = data.drop(["entry_high", "exit_low"], axis=1)
+        return data
+
 def main():
     strategies = {
-        "海龟": StrategyTurtle(entry_window=20, exit_window=10),
-        "移动均线交叉": StrategyMovingAverageCrossover(12, 24),
-        "均值回归": StrategyMeanReversion(),
-        "RSI": StrategyRSI(),
-        "布林带": StrategyBollingerBands(),
-        "保持持有": StrategyBuyAndHold(),
+        "海龟(测试)": MyStrategy(),
+        "保持持有": StrategyBuyAndHold(), # 导入jiuhuang定义的strategy
     }
 
-    # 获取股票数据
+    # 获取股票数据， 正式交易场景下需要结合一些选股逻辑
     symbols = [
         "600135",  # Example stock
         "000001",  # Ping An Bank
@@ -65,7 +89,9 @@ def main():
         strategies,
         stock_price,
         stock_info,
-    )
+    ) # trading_history为交易历史(明细数据), backtest_perf为回测结果(总览数据)
+
+    # 展示回测面板， 注意trading_history和backtest_perf在数量过大的情况下可能会非常慢
     display_backtesting(trading_history, backtest_perf)
 
 
