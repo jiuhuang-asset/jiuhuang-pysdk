@@ -9,8 +9,11 @@ import os
 import duckdb
 from rich.progress import (
     Progress,
+    SpinnerColumn,
     TextColumn,
     BarColumn,
+    TaskProgressColumn,
+    TimeRemainingColumn,
 )
 from rich import print as rprint
 from .utils import (
@@ -133,14 +136,15 @@ class JiuhuangData:
         data = None
         remote_data_count = self.get_data_total(data_type=data_type, **kwargs)
         if remote_data_count == 0:
-            rprint("没有数据, 请检查参数")
+            rprint("[bold yellow]没有数据, 请检查参数")
             return
         if not remote:
             kw = {k: v for k, v in kwargs.items() if k != "remote"}
             data = self._cache.get_data(data_type, **kw)
             if len(data) == remote_data_count:
                 return data
-
+        
+        rprint(f"[cyan]Pulling data from JiuHuang API...[/cyan]")
         url = f"{self.api_url}/data-offline/"
         payload = {
             "data_type": data_type.value,
@@ -150,12 +154,14 @@ class JiuhuangData:
         with self._client.stream("POST", url, json=payload) as response:
             raise_err_with_details(response, read_body=True)
             with Progress(
+                SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
                 BarColumn(),
-                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TaskProgressColumn(),
+                TimeRemainingColumn(),
             ) as progress:
                 task_id = progress.add_task(
-                    f"Downloading {data_type}", total=remote_data_count
+                    f"[cyan]Downloading {data_type}...", total=remote_data_count
                 )
                 for chunk in response.iter_lines():
                     if chunk:
@@ -304,13 +310,13 @@ class _DataCache:
             if unique_keys:
                 # Upsert 模式：使用 MERGE 语句
                 self._bulk_upsert_df(conn, table_name, unique_keys, table_fields, data)
-                print(f"Successfully upserted {len(data)} records into {table_name}")
+                rprint(f"[green]Successfully upserted {len(data)} records into {table_name}")
             else:
                 self._bulk_insert_df(conn, table_name, table_fields, data)
-                print(f"Successfully inserted {len(data)} records into {table_name}")
+                rprint(f"[green]Successfully inserted {len(data)} records into {table_name}")
 
         except Exception as e:
-            print(f"Error importing data: {e}")
+            rprint(f"[bold red]Error importing data: {e}")
             raise
         finally:
             conn.unregister("temp_df")
@@ -384,7 +390,7 @@ class _DataCache:
         try:
             conn.execute(merge_sql)
         except Exception as e:
-            print(f"Error executing merge statement: {e}")
+            rprint(f"[bold red]Error executing merge statement: {e}")
             # 回退到 INSERT ... WHERE NOT EXISTS 方式
             self._fallback_upsert(conn, table_name, unique_keys, insert_columns)
 

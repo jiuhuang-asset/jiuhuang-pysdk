@@ -5,14 +5,14 @@ jiuhuang（韭皇）是一个**免费**,高性能,简洁易用的金融数据获
 
 ## 亮点
 
-- **丰富的数据源**：兼容 akshare 多种数据类型，支持获取A股、期货、基金、ETF、宏观等数据
+- **丰富的数据源**：兼容akshare多种数据类型，支持获取A股、基金、宏观等数据
 - **统一的数据接口**：通过 `DataTypes` 枚举类统一管理数据类型，输出字段名标准化为英文字段名
 - **多时间颗粒度支持**：支持日、周、月级别数据，以及分钟级实时数据
 - **智能数据搜索**：内置中文语义搜索功能，快速找到所需数据类型
 - **多进程并行回测**：内置多进程并行计算，回测速度极快
 - **内置多种策略**：提供海龟交易、均线交叉、RSI、布林带、动量等 11+ 种经典策略
 - **可视化回测仪表盘**：交互式图表展示回测结果，支持交易历史、策略分布、排名对比等
-- **易于扩展**：支持自定义策略，只需继承 `Strategy` 基类并实现 `_execute_one` 方法
+- **易于扩展**：支持自定义策略
 - **MCP Server 支持**：可作为 MCP 服务器运行，AI Agent 可通过标准协议调用
 - **Claude Code Skill 集成**：提供 Skill 配置，Claude Code 可直接使用 
 
@@ -183,7 +183,7 @@ jh = JiuhuangData()
 results = jh.search_data("A股 股价 前复权", top_n=5)
 
 # 数据详细说明（调用方式、输入输出参数、代码示例）
-description_md = jh.describe_data(DataTypes.STOCK_ZH_A_HIST_D_QFQ)
+_ = jh.describe_data(DataTypes.STOCK_ZH_A_HIST_D_QFQ)
 ```
 
 ### 回测示例

@@ -1,7 +1,7 @@
 [project]
 name = "jiuhuang-pysdk"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.1.1"
+description = "Jiuhuang python sdk"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -16,6 +16,12 @@ dependencies = [
     "rich>=14.3.2",
     "fastmcp>=2.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/jiuhuang-asset/jiuhuang-pysdk"
+Repository = "https://github.com/jiuhuang-asset/jiuhuang-pysdk"
+Issues = "https://github.com/jiuhuang-asset/jiuhuang-pysdk/issues"
+
 
 [tool.setuptools]
 packages = ["jiuhuang"]

@@ -1,9 +1,10 @@
 import pandas as pd
 from typing import Dict, Callable
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn, TaskProgressColumn
 from .strategy import Strategy
 from .risk_management import RiskManagementParams, risk_management_one_symbol
 from .metrics import cal_metrics, cal_metrics_from_returns, calculate_strategy_returns
-
+from rich import print as rprint
 
 def build_position(
     df: pd.DataFrame,
@@ -70,24 +71,35 @@ def evaluate_strategies(
     if "created_at" in _trading_history_cols:
         _trading_history_cols.remove("created_at")
 
-    for strat_name, strat in strategies.items():
-        df_sig = strat(price)
-        rmp = rmps.get(strat_name, RiskManagementParams())
-        df_with_pos = build_position(
-            df_sig,
-            buy_signal_name="buy_signal",
-            sell_signal_name="sell_signal",
-            use_next_day_return=use_next_day_return,
-            rmp=rmp,
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeRemainingColumn(),
+    ) as progress:
+        task = progress.add_task(
+            f"[cyan]Evaluating {len(strategies)} strategies...", total=len(strategies)
         )
-        # Calculate strategy returns (includes cumulative_return)
-        strat_trading_histroy = calculate_strategy_returns(
-            df_with_pos, commission_rate, stamp_tax_rate
-        )
-        metric_series = metric_func(strat_trading_histroy)
-        perf_results[strat_name] = metric_series
-        strat_trading_histroy["strategy"] = strat_name
-        _trading_history_datas.append(strat_trading_histroy)
+        for strat_name, strat in strategies.items():
+            df_sig = strat(price)
+            rmp = rmps.get(strat_name, RiskManagementParams())
+            df_with_pos = build_position(
+                df_sig,
+                buy_signal_name="buy_signal",
+                sell_signal_name="sell_signal",
+                use_next_day_return=use_next_day_return,
+                rmp=rmp,
+            )
+            # Calculate strategy returns (includes cumulative_return)
+            strat_trading_histroy = calculate_strategy_returns(
+                df_with_pos, commission_rate, stamp_tax_rate
+            )
+            metric_series = metric_func(strat_trading_histroy)
+            perf_results[strat_name] = metric_series
+            strat_trading_histroy["strategy"] = strat_name
+            _trading_history_datas.append(strat_trading_histroy)
+            progress.update(task, advance=1)
     # Combine into a DataFrame. Use union of stock_codes present in any result
     combined = pd.DataFrame(perf_results)
     combined = combined.reset_index()
@@ -111,7 +123,7 @@ def backtest(
     use_next_day_return: bool = True,
 ):
     if hist_price_data.empty:
-        print("没有价格数据")
+        rprint("[bold yellow]没有价格数据")
         return
     eval_results, trading_history = evaluate_strategies(
         hist_price_data,
