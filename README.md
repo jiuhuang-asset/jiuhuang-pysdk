@@ -1,11 +1,11 @@
 ![banner](./assets/banner.png)
 # jiuhuang-pysdk
 
-jiuhuang（韭皇）是一个高性能、简洁易用的金融数据获取和回测框架。
+jiuhuang（韭皇）是一个**免费**,高性能,简洁易用的金融数据获取和回测框架。
 
 ## 亮点
 
-- **丰富的数据源**：兼容 akshare 多种数据类型，支持 A 股、期货、基金、ETF、宏观等数据
+- **丰富的数据源**：兼容 akshare 多种数据类型，支持获取A股、期货、基金、ETF、宏观等数据
 - **统一的数据接口**：通过 `DataTypes` 枚举类统一管理数据类型，输出字段名标准化为英文字段名
 - **多时间颗粒度支持**：支持日、周、月级别数据，以及分钟级实时数据
 - **智能数据搜索**：内置中文语义搜索功能，快速找到所需数据类型
@@ -298,24 +298,4 @@ class MyStrategy(Strategy):
 
 ## License
 
-MIT License
-
-Copyright (c) 2026 jiuhuang
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+This project is licensed under the BSD 3-Clause License - see the [LICENSE](LICENSE) file for details.
