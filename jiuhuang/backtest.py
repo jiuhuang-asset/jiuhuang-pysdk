@@ -13,17 +13,17 @@ def build_position(
     use_next_day_return: bool = True,
     rmp: RiskManagementParams = RiskManagementParams(),
 ) -> pd.DataFrame:
-    """Build position based on buy and sell signals for each stock with risk management.
+    """根据买卖信号构建持仓，结合风险管理规则。
 
     Args:
-        df: DataFrame with stock data and signals
-        buy_signal_name: Column name for buy signals
-        sell_signal_name: Column name for sell signals
-        use_next_day_return: Whether to apply signals to next day's positions
-        rmp: RiskManagementParams object containing risk management parameters
+        df: 包含股票数据和信号的 DataFrame
+        buy_signal_name: 买入信号列名
+        sell_signal_name: 卖出信号列名
+        use_next_day_return: 是否将信号应用到次日持仓
+        rmp: 风险管理参数对象
 
     Returns:
-        DataFrame with added 'position' column
+        新增 'position' 列的 DataFrame
     """
     result_df = df.copy()
     result_df = result_df.sort_values(["symbol", "date"]).reset_index(drop=True)
@@ -122,6 +122,23 @@ def backtest(
     metric_decimal: int = 2,
     use_next_day_return: bool = True,
 ):
+    """回测策略表现。
+
+    Args:
+        strategies: 策略字典，键为策略名称，值为策略函数
+        hist_price_data: 历史价格数据 DataFrame
+        stock_info: 股票信息 DataFrame（可选，包含 symbol, name, industry）
+        rmps: 各策略的风险管理参数字典
+        commission_rate: 佣金费率（默认 0.0002）
+        stamp_tax_rate: 印花税率（默认 0.0005）
+        metric_decimal: 指标小数位数（默认 2）
+        use_next_day_return: 是否使用次日收益率（默认 True）
+
+    Returns:
+        tuple: (trading_history, reshaped_eval_results)
+            - trading_history: 交易历史记录
+            - reshaped_eval_results: 重塑后的评估指标结果
+    """
     if hist_price_data.empty:
         rprint("[bold yellow]没有价格数据")
         return
@@ -139,13 +156,11 @@ def backtest(
         id_vars=["symbol", "metric"], var_name="strategy", value_name="value"
     )
 
-    # Step 2: Pivot the melted DataFrame to spread metrics into columns
     reshaped_eval_results = melted_eval_results.pivot_table(
         index=["symbol", "strategy"], columns="metric", values="value"
     ).reset_index()
 
-    # Optional: Flatten column names if needed
-    reshaped_eval_results.columns.name = None  # Remove the 'metric' label from columns
+    reshaped_eval_results.columns.name = None 
 
     if not stock_info.empty:
         reshaped_eval_results = reshaped_eval_results.merge(

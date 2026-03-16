@@ -39,7 +39,7 @@ class JiuhuangData:
     def __init__(
         self,
         api_key: str = getenv("JIUHUANG_API_KEY"),
-        api_url: str = getenv("JIUHUANG_API_URL"),
+        api_url: str = getenv("JIUHUANG_API_URL", "https://data.jiuhuang.xyz"),
     ):
         self.api_key = api_key
         self.api_url = api_url
@@ -66,12 +66,13 @@ class JiuhuangData:
 
         return [{d.value.upper(): get_table_comment(d)} for d in dts]
 
-    def describe_data(self, data_type: DataTypes) -> str:
+    def describe_data(self, data_type: DataTypes, return_md:bool=False) -> str:
         """
         从 akshare 官网动态抓取相应数据的介绍，使用 rich 打印，同时返回 markdown 格式文档
 
         Args:
             data_type: 数据类型
+            return_md: 是否返回 markdown 格式文档
 
         Returns:
             markdown 格式的文档字符串
@@ -98,7 +99,8 @@ class JiuhuangData:
         # 调用 pretty_print_doc 打印，并获取返回的 markdown
         markdown_doc = pretty_print_doc(data, rename_mapping, index_name, data_type)
 
-        return markdown_doc
+        if return_md:
+            return markdown_doc
 
     def get_data_total(
         self,

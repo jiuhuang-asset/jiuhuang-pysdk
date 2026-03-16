@@ -3,6 +3,9 @@
 
 jiuhuang（韭皇）是一个**免费**,高性能,简洁易用的金融数据获取和回测框架。
 
+- **官网&API申请**: https://jiuhuang.xyz  
+- **文档地址**: https://doc.jiuhuang.xyz
+
 ## 亮点
 
 - **丰富的数据源**：兼容akshare多种数据类型，支持获取A股、基金、宏观等数据
@@ -31,161 +34,6 @@ pip install -U jiuhuang-pysdk
 ```
 
 
-### 初始化
-
-```python
-from jiuhuang.data import JiuhuangData, DataTypes
-
-# 方式一：使用环境变量（推荐）
-# 设置 API_URL 和 API_KEY 环境变量
-# 申请地址：https://jiuhuang.xyz
-jh = JiuhuangData()
-
-# 方式二：直接传入参数
-jh = JiuhuangData(api_url="https://data.jiuhuang.xyz", api_key="你的API KEY")
-```
-
-### MCP 服务器
-
-jiuhuang 支持作为 MCP 服务器运行，方便 AI Agent 调用金融数据。
-
-#### 启动方式
-
-**方式一：直接运行**
-```bash
-python -m jiuhuang.mcp
-```
-
-**方式二：使用 uvx 运行**
-```bash
-uvx python -m jiuhuang.mcp
-```
-
-#### 环境变量
-
-| 变量名 | 说明 | 默认值 |
-|--------|------|--------|
-| `JIUHUANG_API_KEY` | API 密钥（必填） | - |
-| `JIUHUANG_API_URL` | API 地址 | `https://data.jiuhuang.xyz` |
-
-#### 可用工具
-
-MCP 服务器提供以下工具：
-
-- `search_data(keyword, top_n)` - 搜索数据类型
-- `describe_data(data_type)` - 获取数据类型详细说明（包含参数说明和代码示例）
-- `get_data(data_type, params)` - 通用数据获取
-
-#### 使用流程
-
-1. 使用 `search_data` 搜索需要的数据类型
-2. 使用 `describe_data` 查看数据详情和需要的参数
-3. 使用 `get_data` 获取数据
-
-#### Claude Code 集成
-
-在 Claude Code 中配置 MCP 服务器：
-
-```json
-{
-  "mcpServers": {
-    "jiuhuang": {
-      "command": "python",
-      "args": ["-m", "jiuhuang.mcp"],
-      "env": {
-        "JIUHUANG_API_KEY": "your_api_key"
-      }
-    }
-  }
-}
-```
-
-### Skill
-
-jiuhuang 提供了 Claude Code Skill，可直接在 Claude Code 中使用。配置方式：
-
-1. 将 `jiuhuang-data-skill` 目录复制到 Claude Code 的 skills 目录
-2. 或在项目中引用该 Skill
-
-Skill 提供了完整的工作流指引：
-- 动态探索数据类型：先搜索后获取
-- 常用数据模式：A 股股价、ETF 数据、宏观数据等
-- 快速访问核心模块
-
-### 获取股票数据
-
-```python
-from jiuhuang.data import JiuhuangData, DataTypes
-
-jh = JiuhuangData()
-
-# 单一股票数据获取（前复权）
-stock_price = jh.get_data(
-    DataTypes.STOCK_ZH_A_HIST_D_QFQ,  # 前复权
-    start="2025-01-01",
-    end="2026-02-06",
-    symbol="000001",
-)
-
-# 多只股票数据获取
-symbols = ["000568", "000651", "000725", "000776", "000895"]
-stock_price = jh.get_data(
-    DataTypes.STOCK_ZH_A_HIST_QFQ,  # 前复权
-    start="2025-01-01",
-    end="2026-02-06",
-    symbol=",".join(symbols),  # 多只股票使用英文逗号分隔
-)
-```
-
-> **说明**：`jiuhuang` 兼容了 akshare 多种数据类型，`DataTypes`（枚举类）对应了 `ak.xxxx()`。例如：`akshare.stock_zh_a_hist()` 对应 `DataTypes.STOCK_ZH_A_HIST`。不同点在于：akshare 通过 `adjust` 参数控制复权方式，而 jiuhuang 通过 `DataTypes` 有无后缀进行区分（如 `_QFQ` 表示前复权）。另外 jiuhuang 输出的 DataFrame 都是字段命名标准化后的英文字段名。
-
-### 不同时间颗粒度数据
-
-```python
-from jiuhuang.data import JiuhuangData, DataTypes
-from datetime import datetime, timedelta
-
-jh = JiuhuangData()
-
-# 日数据，使用时间格式 YYYY-MM-DD
-stock_price = jh.get_data(
-    DataTypes.STOCK_ZH_A_HIST_QFQ,
-    start="2025-01-01",
-    end="2026-02-06",
-    symbol="000568",
-)
-
-# 月数据，使用时间格式 YYYY-MM
-cpi = jh.get_data(
-    DataTypes.MACRO_CHINA_CPI,
-    start="2025-01",
-    end="2026-02",
-)
-
-# 分钟级数据，使用时间格式 YYYY-MM-DD HH:MM:SS
-now = datetime.now()
-price_realtime = jh.get_data(
-    DataTypes.STOCK_ZH_A_SPOT,
-    start=now - timedelta(minutes=10).strftime("%Y-%m-%d %H:%M:%S"),
-    end=now.strftime("%Y-%m-%d %H:%M:%S"),
-    symbol="000001",
-)
-```
-
-### 搜索和描述数据
-
-```python
-from jiuhuang.data import JiuhuangData, DataTypes
-
-jh = JiuhuangData()
-
-# 中文名搜索
-results = jh.search_data("A股 股价 前复权", top_n=5)
-
-# 数据详细说明（调用方式、输入输出参数、代码示例）
-_ = jh.describe_data(DataTypes.STOCK_ZH_A_HIST_D_QFQ)
-```
-
 ### 回测示例
 
 ```python
@@ -197,7 +45,13 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-jh = JiuhuangData()
+# 方式一：使用环境变量（推荐）
+# 设置 API_URL 和 API_KEY 环境变量
+# API_KEY申请地址：https://jiuhuang.xyz
+jh = JiuhuangData()  
+# 方式二：直接传入参数
+jh = JiuhuangData(api_url="https://data.jiuhuang.xyz", api_key="你的API KEY")
+
 
 # 定义策略（可使用内置策略或自定义策略）
 strategies = {
@@ -237,64 +91,6 @@ display_backtesting(trading_history, backtest_perf)
 |---------|---------|
 | ![交易历史](./assets/trading_history_resized.png) | ![策略排名](./assets/strat_ranking_resized.png) |
 
-### 内置策略
-
-jiuhuang 提供了多种内置策略，可直接使用：
-
-| 策略类 | 说明 |
-|-------|------|
-| `StrategyTurtle` | 海龟交易策略 - 基于历史高点/低点突破入场 |
-| `StrategyMovingAverageCrossover` | 均线交叉策略 - 短期均线与长期均线交叉判断趋势 |
-| `StrategyBuyAndHold` | 买入持有策略 - 长期投资基准策略 |
-| `StrategyVolumeTrend` | 成交量趋势策略 - 基于成交量和价格趋势 |
-| `StrategyVolumeDivergence` | 量价背离策略 - RSI指标和成交量背离 |
-| `StrategyMeanReversion` | 均值回归策略 - 价格偏离均值时交易 |
-| `StrategyRSI` | RSI 策略 - 基于相对强弱指标 |
-| `StrategyBollingerBands` | 布林带策略 - 基于布林带上下轨突破 |
-| `StrategyMomentum` | 动量策略 - 基于价格动量 |
-| `StrategyBreakout` | 突破策略 - 基于历史高低点突破 |
-| `StrategyDualThrust` | Dual Thrust 策略 - 经典日内交易策略 |
-
-### 自定义策略
-
-```python
-from jiuhuang.strategy import Strategy
-import pandas as pd
-
-class MyStrategy(Strategy):
-    def __init__(self, entry_window: int = 20, exit_window: int = 10):
-        self.entry_window = entry_window
-        self.exit_window = exit_window
-
-    def _execute_one(self, data: pd.DataFrame) -> pd.DataFrame:
-        """对单个标的生成买卖信号"""
-        data = data.copy()
-
-        # 计算滚动最高价和最低价
-        data["entry_high"] = data["high"].rolling(window=self.entry_window, min_periods=1).max()
-        data["exit_low"] = data["low"].rolling(window=self.exit_window, min_periods=1).min()
-
-        # 生成买卖信号
-        data["buy_signal"] = (data["close"] > data["entry_high"].shift(1)).astype(int)
-        data["sell_signal"] = (data["close"] < data["exit_low"].shift(1)).astype(int)
-
-        # 清理临时列
-        data = data.drop(["entry_high", "exit_low"], axis=1)
-        return data
-```
-
-> **注意**：自定义策略需继承 `Strategy` 基类，必须实现 `_execute_one` 方法。入参为 `pandas.DataFrame`，出参需包含 `buy_signal` 和 `sell_signal` 两列。jiuhuang 会默认使用多进程并行进行回测。
-
-## 更多示例
-
-更多示例代码请参考 [examples](./examples/) 目录：
-
-- `0_quickstart.py` - 快速开始：数据获取与回测完整流程
-- `1_get_data.py` - 基础数据获取
-- `2_get_data_for_diffrent_date_granularity.py` - 不同时间颗粒度数据获取
-- `3_search_and_describe_data.py` - 搜索和描述数据接口
-- `4_backtest.py` - 自定义策略回测示例
-- `5_mcp_server.py` - MCP 服务器调用示例
 
 ## License
 

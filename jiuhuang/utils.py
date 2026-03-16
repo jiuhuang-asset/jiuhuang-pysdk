@@ -618,48 +618,48 @@ def  generate_markdown_doc(data: dict, rename_mapping: dict, index_name: str, dt
         lines.append("")
 
     # 数据示例
-    if data.get("data_sample") and rename_mapping:
-        lines.append("### 数据示例")
-        lines.append("")
+    # if data.get("data_sample") and rename_mapping:
+    #     lines.append("### 数据示例")
+    #     lines.append("")
 
-        # 解析数据行（最多3行）
-        sample_rows = []
-        for row in data["data_sample"][1:4]:  # 只取3行
-            cols = [c.strip() for c in row.split() if c.strip()]
-            if cols:
-                # 跳过第一列（index），保留后面列
-                sample_rows.append(cols[1:])
+    #     # 解析数据行（最多3行）
+    #     sample_rows = []
+    #     for row in data["data_sample"][1:4]:  # 只取3行
+    #         cols = [c.strip() for c in row.split() if c.strip()]
+    #         if cols:
+    #             # 跳过第一列（index），保留后面列
+    #             sample_rows.append(cols[1:])
 
-        if not sample_rows:
-            sample_rows = []
+    #     if not sample_rows:
+    #         sample_rows = []
 
-        # 找出哪些列有...并排除
-        col_has_ellipsis = set()
-        for row in sample_rows:
-            for i, c in enumerate(row):
-                if c == "...":
-                    col_has_ellipsis.add(i)
+    #     # 找出哪些列有...并排除
+    #     col_has_ellipsis = set()
+    #     for row in sample_rows:
+    #         for i, c in enumerate(row):
+    #             if c == "...":
+    #                 col_has_ellipsis.add(i)
 
-        # 过滤掉包含...的列
-        filtered_rows = []
-        for row in sample_rows:
-            filtered_row = [c for i, c in enumerate(row) if i not in col_has_ellipsis]
-            filtered_rows.append(filtered_row)
+    #     # 过滤掉包含...的列
+    #     filtered_rows = []
+    #     for row in sample_rows:
+    #         filtered_row = [c for i, c in enumerate(row) if i not in col_has_ellipsis]
+    #         filtered_rows.append(filtered_row)
 
-        # 使用默认表头
-        default_headers = ["date", "symbol", "open", "close", "high", "low", "volume", "amount"]
-        num_cols = len(filtered_rows[0]) if filtered_rows else 8
-        converted_headers = default_headers[:num_cols]
+    #     # 使用默认表头
+    #     default_headers = ["date", "symbol", "open", "close", "high", "low", "volume", "amount"]
+    #     num_cols = len(filtered_rows[0]) if filtered_rows else 8
+    #     converted_headers = default_headers[:num_cols]
 
-        # 生成表头
-        lines.append("| " + " | ".join(converted_headers) + " |")
-        lines.append("|" + "|".join(["---" for _ in converted_headers]) + "|")
+    #     # 生成表头
+    #     lines.append("| " + " | ".join(converted_headers) + " |")
+    #     lines.append("|" + "|".join(["---" for _ in converted_headers]) + "|")
 
-        # 生成数据行（过滤后的）
-        for row in filtered_rows:
-            lines.append("| " + " | ".join(row) + " |")
+    #     # 生成数据行（过滤后的）
+    #     for row in filtered_rows:
+    #         lines.append("| " + " | ".join(row) + " |")
 
-        lines.append("")
+    #     lines.append("")
 
     return "\n".join(lines)
 
