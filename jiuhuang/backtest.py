@@ -12,6 +12,7 @@ def build_position(
     sell_signal_name: str = "sell_signal",
     use_next_day_return: bool = True,
     rmp: RiskManagementParams = RiskManagementParams(),
+    date_column: str = "date",
 ) -> pd.DataFrame:
     """根据买卖信号构建持仓，结合风险管理规则。
 
@@ -21,12 +22,13 @@ def build_position(
         sell_signal_name: 卖出信号列名
         use_next_day_return: 是否将信号应用到次日持仓
         rmp: 风险管理参数对象
+        date_column: 时间字段名称，默认 "date"
 
     Returns:
         新增 'position' 列的 DataFrame
     """
     result_df = df.copy()
-    result_df = result_df.sort_values(["symbol", "date"]).reset_index(drop=True)
+    result_df = result_df.sort_values(["symbol", date_column]).reset_index(drop=True)
 
     # Handle signal timing
     if use_next_day_return:
@@ -56,6 +58,7 @@ def evaluate_strategies(
     rmps: Dict[str, RiskManagementParams] = {},
     commission_rate: float = 0.0002,
     stamp_tax_rate: float = 0.0005,
+    date_column: str = "date",
 ) -> pd.DataFrame:
     perf_results: dict[str, pd.Series] = {}
     _trading_history_datas = []
@@ -82,6 +85,8 @@ def evaluate_strategies(
             f"[cyan]Evaluating {len(strategies)} strategies...", total=len(strategies)
         )
         for strat_name, strat in strategies.items():
+            # Set date_column for the strategy
+            strat.date_column = date_column
             df_sig = strat(price)
             rmp = rmps.get(strat_name, RiskManagementParams())
             df_with_pos = build_position(
@@ -90,12 +95,13 @@ def evaluate_strategies(
                 sell_signal_name="sell_signal",
                 use_next_day_return=use_next_day_return,
                 rmp=rmp,
+                date_column=date_column,
             )
             # Calculate strategy returns (includes cumulative_return)
             strat_trading_histroy = calculate_strategy_returns(
-                df_with_pos, commission_rate, stamp_tax_rate
+                df_with_pos, commission_rate, stamp_tax_rate, date_column
             )
-            metric_series = metric_func(strat_trading_histroy)
+            metric_series = metric_func(strat_trading_histroy, date_column=date_column)
             perf_results[strat_name] = metric_series
             strat_trading_histroy["strategy"] = strat_name
             _trading_history_datas.append(strat_trading_histroy)
@@ -121,6 +127,7 @@ def backtest(
     stamp_tax_rate: float = 0.0005,
     metric_decimal: int = 2,
     use_next_day_return: bool = True,
+    date_column: str = "date",
 ):
     """回测策略表现。
 
@@ -133,6 +140,7 @@ def backtest(
         stamp_tax_rate: 印花税率（默认 0.0005）
         metric_decimal: 指标小数位数（默认 2）
         use_next_day_return: 是否使用次日收益率（默认 True）
+        date_column: 时间字段名称，默认 "date"
 
     Returns:
         tuple: (trading_history, reshaped_eval_results)
@@ -145,11 +153,12 @@ def backtest(
     eval_results, trading_history = evaluate_strategies(
         hist_price_data,
         strategies,
-        metric_func=lambda d: cal_metrics_from_returns(d),
+        metric_func=lambda d: cal_metrics_from_returns(d, date_column=date_column),
         rmps=rmps,
         use_next_day_return=use_next_day_return,
         commission_rate=commission_rate,
         stamp_tax_rate=stamp_tax_rate,
+        date_column=date_column,
     )
     eval_results = eval_results.round(metric_decimal)
     melted_eval_results = eval_results.melt(

@@ -6,23 +6,28 @@ import numpy as np
 __all__ = ["cal_metrics", "cal_metrics_from_returns"]
 
 
-def calculate_returns(df: pd.DataFrame, key="symbol") -> pd.DataFrame:
+def calculate_returns(df: pd.DataFrame, key: str = "symbol", date_column: str = "date") -> pd.DataFrame:
     """Calculate daily returns for each stock.
 
     Args:
         df: DataFrame with stock data
+        key: 分组键，通常是股票代码字段名
+        date_column: 时间字段名称，默认 "date"
 
     Returns:
         DataFrame with added 'return' column
     """
     result_df = df.copy()
-    result_df = result_df.sort_values([key, "date"]).reset_index(drop=True)
+    result_df = result_df.sort_values([key, date_column]).reset_index(drop=True)
     result_df["return"] = result_df.groupby(key)["close"].pct_change().fillna(0)
     return result_df
 
 
 def calculate_strategy_returns(
-    df: pd.DataFrame, commission_rate: float = 0, stamp_tax_rate: float = 0
+    df: pd.DataFrame,
+    commission_rate: float = 0,
+    stamp_tax_rate: float = 0,
+    date_column: str = "date",
 ) -> pd.DataFrame:
     """Calculate strategy returns based on position and market returns, including transaction fees.
 
@@ -30,12 +35,13 @@ def calculate_strategy_returns(
         df: DataFrame with stock data and positions
         commission_rate: 买卖双向手续费率
         stamp_tax_rate: 印花税率，仅对卖出收取 (默认 0.0005 = 0.05%)
+        date_column: 时间字段名称，默认 "date"
 
     Returns:
         DataFrame with added 'strategy_return' column
     """
     result_df = df.copy()
-    result_df = calculate_returns(result_df)
+    result_df = calculate_returns(result_df, date_column=date_column)
 
     result_df["strategy_return"] = result_df["return"] * result_df["position"]
 
@@ -79,48 +85,51 @@ def calculate_strategy_returns(
 
 
 def cal_metrics(
-    df: pd.DataFrame, commission_rate: float = 0.0002, stamp_tax_rate: float = 0.0005
+    df: pd.DataFrame,
+    commission_rate: float = 0.0002,
+    stamp_tax_rate: float = 0.0005,
+    date_column: str = "date",
 ) -> pd.Series:
-    """
-    Calculate multiple strategy metrics using quantstats for each symbol.
+    """Calculate multiple strategy metrics using quantstats for each symbol.
 
     Args:
         df: DataFrame with stock data, signals, and positions.
         commission_rate: Commission rate for buying/selling.
         stamp_tax_rate: Stamp tax rate for selling.
+        date_column: 时间字段名称，默认 "date"
 
     Returns:
         pd.Series with multi-level index (metric_name, symbol).
     """
-    df = calculate_strategy_returns(df, commission_rate, stamp_tax_rate)
+    df = calculate_strategy_returns(df, commission_rate, stamp_tax_rate, date_column)
     metrics = [
-        "年化收益率",
+        "累积收益率",
         "最大回撤",
         "胜率",
         "夏普比率",
         "卡玛比率",
         "索提诺比率",
-        "年化波动率",
+        "收益率标准差",
         "风险价值(VaR)",
     ]
 
     results = []
     for symbol, group in df.groupby("symbol"):
         # Extract strategy returns for this symbol
-        returns = group.set_index("date")["strategy_return"]
+        returns = group.set_index(date_column)["strategy_return"]
 
-        # Compute metrics using quantstats
-        cagr = qs.stats.cagr(returns)
+        # Compute metrics
+        cumulative_return = group.groupby("symbol")["cumulative_return"].last().iloc[0]
         max_dd = qs.stats.max_drawdown(returns)
         win_rate = (returns > 0).mean()
         sharpe = qs.stats.sharpe(returns)
-        calmar = qs.stats.calmar(returns)
+        calmar = qs.stats.calmar(returns) if max_dd != 0 else np.nan
         sortino = qs.stats.sortino(returns)
-        volatility = qs.stats.volatility(returns)
+        volatility = returns.std()
         var = qs.stats.value_at_risk(returns)
 
         symbol_results = pd.Series(
-            [cagr, max_dd, win_rate, sharpe, calmar, sortino, volatility, var],
+            [cumulative_return, max_dd, win_rate, sharpe, calmar, sortino, volatility, var],
             index=pd.MultiIndex.from_product([[symbol], metrics]),
         )
         results.append(symbol_results)
@@ -129,41 +138,42 @@ def cal_metrics(
     return combined_series
 
 
-def cal_metrics_from_returns(df: pd.DataFrame) -> pd.Series:
+def cal_metrics_from_returns(df: pd.DataFrame, date_column: str = "date") -> pd.Series:
     """Calculate metrics from already computed strategy returns.
 
     Args:
         df: DataFrame with stock data and 'strategy_return' column already calculated.
+        date_column: 时间字段名称，默认 "date"
 
     Returns:
         pd.Series with multi-level index (metric_name, symbol).
     """
     metrics = [
-        "年化收益率",
+        "累积收益率",
         "最大回撤",
         "胜率",
         "夏普比率",
         "卡玛比率",
         "索提诺比率",
-        "年化波动率",
+        "收益率标准差",
         "风险价值(VaR)",
     ]
 
     results = []
     for symbol, group in df.groupby("symbol"):
-        returns = group.set_index("date")["strategy_return"]
+        returns = group.set_index(date_column)["strategy_return"]
 
-        cagr = qs.stats.cagr(returns)
+        cumulative_return = group.groupby("symbol")["cumulative_return"].last().iloc[0]
         max_dd = qs.stats.max_drawdown(returns)
         win_rate = (returns > 0).mean()
         sharpe = qs.stats.sharpe(returns)
-        calmar = qs.stats.calmar(returns)
+        calmar = qs.stats.calmar(returns) if max_dd != 0 else np.nan
         sortino = qs.stats.sortino(returns)
-        volatility = qs.stats.volatility(returns)
+        volatility = returns.std()
         var = qs.stats.value_at_risk(returns)
 
         symbol_results = pd.Series(
-            [cagr, max_dd, win_rate, sharpe, calmar, sortino, volatility, var],
+            [cumulative_return, max_dd, win_rate, sharpe, calmar, sortino, volatility, var],
             index=pd.MultiIndex.from_product([[symbol], metrics]),
         )
         results.append(symbol_results)
