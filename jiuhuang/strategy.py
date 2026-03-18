@@ -17,13 +17,13 @@ class Strategy(ABC):
     - 统一的数据排序和索引重置
     """
 
-    def __init__(self, date_column: str = "date"):
+    def __init__(self, dt_column: str = "date"):
         """初始化策略
 
         Args:
-            date_column: 时间字段名称，默认 "date"，可能为 trade_date, datetime 等
+            dt_column: 时间字段名称，默认 "date"，可能为 trade_date, datetime 等
         """
-        self.date_column = date_column
+        self.dt_column = dt_column
 
     @abstractmethod
     def _execute_one(self, data: pd.DataFrame) -> pd.DataFrame:
@@ -47,7 +47,7 @@ class Strategy(ABC):
             合并后的结果 DataFrame
         """
         # 按股票代码和日期排序
-        price = price.sort_values(["symbol", self.date_column]).reset_index(drop=True)
+        price = price.sort_values(["symbol", self.dt_column]).reset_index(drop=True)
 
         # Group by symbol and apply parallel processing
         grouped = price.groupby("symbol")
@@ -103,8 +103,8 @@ class StrategyTurtle(Strategy):
     - 长期趋势跟踪
     """
 
-    def __init__(self, entry_window: int = 20, exit_window: int = 10, date_column: str = "date"):
-        super().__init__(date_column)
+    def __init__(self, entry_window: int = 20, exit_window: int = 10, dt_column: str = "date"):
+        super().__init__(dt_column)
         self.entry_window = entry_window
         self.exit_window = exit_window
 
@@ -148,8 +148,8 @@ class StrategyMovingAverageCrossover(Strategy):
     - 需要结合市场环境使用，避免在震荡市中频繁交易
     """
 
-    def __init__(self, short_window: int = 50, long_window: int = 200, date_column: str = "date"):
-        super().__init__(date_column)
+    def __init__(self, short_window: int = 50, long_window: int = 200, dt_column: str = "date"):
+        super().__init__(dt_column)
         self.short_window = short_window
         self.long_window = long_window
 
@@ -234,9 +234,9 @@ class StrategyVolumeTrend(Strategy):
         volume_threshold: float = 1.2,
         volume_trend_threshold: float = 0.1,
         price_change_threshold: float = 0.02,
-        date_column: str = "date",
+        dt_column: str = "date",
     ):
-        super().__init__(date_column)
+        super().__init__(dt_column)
         self.ma_window = ma_window
         self.volume_window = volume_window
         self.volume_threshold = volume_threshold
@@ -299,9 +299,9 @@ class StrategyVolumeDivergence(Strategy):
         price_change_threshold: float = 0.02,
         rsi_oversold: float = 30,
         rsi_overbought: float = 70,
-        date_column: str = "date",
+        dt_column: str = "date",
     ):
-        super().__init__(date_column)
+        super().__init__(dt_column)
         self.rsi_window = rsi_window
         self.volume_window = volume_window
         self.volume_trend_threshold = volume_trend_threshold
@@ -368,9 +368,9 @@ class StrategyMeanReversion(Strategy):
         rsi_window: int = 14,
         rsi_oversold: int = 30,
         rsi_overbought: int = 70,
-        date_column: str = "date",
+        dt_column: str = "date",
     ):
-        super().__init__(date_column)
+        super().__init__(dt_column)
         self.ma_window = ma_window
         self.deviation_threshold = deviation_threshold
         self.rsi_window = rsi_window
@@ -441,9 +441,9 @@ class StrategyRSI(Strategy):
         rsi_overbought: float = 70,
         rsi_exit_oversold: float = 50,
         rsi_exit_overbought: float = 50,
-        date_column: str = "date",
+        dt_column: str = "date",
     ):
-        super().__init__(date_column)
+        super().__init__(dt_column)
         self.rsi_window = rsi_window
         self.rsi_oversold = rsi_oversold
         self.rsi_overbought = rsi_overbought
@@ -502,9 +502,9 @@ class StrategyBollingerBands(Strategy):
         window: int = 20,
         num_std: float = 2.0,
         use_mean_reversion: bool = False,
-        date_column: str = "date",
+        dt_column: str = "date",
     ):
-        super().__init__(date_column)
+        super().__init__(dt_column)
         self.window = window
         self.num_std = num_std
         self.use_mean_reversion = use_mean_reversion
@@ -571,9 +571,9 @@ class StrategyMomentum(Strategy):
         momentum_window: int = 20,
         momentum_threshold: float = 0.05,
         ma_window: int = 60,
-        date_column: str = "date",
+        dt_column: str = "date",
     ):
-        super().__init__(date_column)
+        super().__init__(dt_column)
         self.momentum_window = momentum_window
         self.momentum_threshold = momentum_threshold
         self.ma_window = ma_window
@@ -633,9 +633,9 @@ class StrategyBreakout(Strategy):
         lookback_period: int = 20,
         atr_multiplier: float = 2.0,
         use_atr_stop: bool = False,
-        date_column: str = "date",
+        dt_column: str = "date",
     ):
-        super().__init__(date_column)
+        super().__init__(dt_column)
         self.lookback_period = lookback_period
         self.atr_multiplier = atr_multiplier
         self.use_atr_stop = use_atr_stop
@@ -720,9 +720,9 @@ class StrategyDualThrust(Strategy):
         k1: float = 0.5,
         k2: float = 0.5,
         lookback_period: int = 20,
-        date_column: str = "date",
+        dt_column: str = "date",
     ):
-        super().__init__(date_column)
+        super().__init__(dt_column)
         self.k1 = k1
         self.k2 = k2
         self.lookback_period = lookback_period

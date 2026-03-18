@@ -4,12 +4,12 @@ import os
 
 
 class BacktestingView:
-    def __init__(self, trading_hist: pd.DataFrame, perf_data: pd.DataFrame, date_column: str = "date"):
-        self.date_column = date_column
+    def __init__(self, trading_hist: pd.DataFrame, perf_data: pd.DataFrame, dt_column: str = "date"):
+        self.dt_column = dt_column
         # 保留原始日期格式，支持分钟级数据
         cols = [
             "symbol",
-            date_column,
+            dt_column,
             "open",
             "high",
             "low",
@@ -26,7 +26,7 @@ class BacktestingView:
         available_cols = [c for c in cols if c in trading_hist.columns]
         self.trading_hist = (
             trading_hist[available_cols]
-            .rename(columns={date_column: "date"})
+            .rename(columns={dt_column: "date"})
             .assign(date=lambda x: x["date"].astype(str))
             .to_dict(orient="records")
         )
@@ -39,10 +39,10 @@ class BacktestingView:
         self.perf_data = perf_filled.to_dict(orient="records")
 
     def init_data(self):
-        return {"trading_hist": self.trading_hist, "perf_data": self.perf_data, "date_column": self.date_column}
+        return {"trading_hist": self.trading_hist, "perf_data": self.perf_data, "dt_column": self.dt_column}
 
 
-def display_backtesting(trading_hist: pd.DataFrame, perf_data: pd.DataFrame, date_column: str = "date"):
+def display_backtesting(trading_hist: pd.DataFrame, perf_data: pd.DataFrame, dt_column: str = "date"):
     """显示回测结果可视化看板。
 
     使用 PyWebView 打开本地 HTML 页面展示回测的交易历史和策略表现指标。
@@ -61,7 +61,7 @@ def display_backtesting(trading_hist: pd.DataFrame, perf_data: pd.DataFrame, dat
             - cumulative_return: 累积收益率
             - drawdown: 回撤
         perf_data: 策略表现指标 DataFrame，包含各策略的绩效指标
-        date_column: 时间字段名称，默认 "date"。支持 "date", "trade_date", "datetime" 等
+        dt_column: 时间字段名称，默认 "date"。支持 "date", "trade_date", "datetime" 等
 
     Returns:
         None: 该函数直接打开可视化窗口，不返回值
@@ -75,13 +75,13 @@ def display_backtesting(trading_hist: pd.DataFrame, perf_data: pd.DataFrame, dat
         >>> trading_history, results = backtest(
         ...     strategies={"turtle": StrategyTurtle()},
         ...     hist_price_data=price_df,
-        ...     date_column="trade_date"
+        ...     dt_column="trade_date"
         ... )
         >>>
         >>> # 显示可视化看板
-        >>> display_backtesting(trading_history, results, date_column="trade_date")
+        >>> display_backtesting(trading_history, results, dt_column="trade_date")
     """
-    api = BacktestingView(trading_hist, perf_data, date_column)
+    api = BacktestingView(trading_hist, perf_data, dt_column)
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     html_path = os.path.join(current_dir, "front_src", "bt-dash", "index.html")
