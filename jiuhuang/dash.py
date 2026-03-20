@@ -1,6 +1,7 @@
 import webview
 import pandas as pd
 import os
+from rich import print as rprint
 
 
 class BacktestingView:
@@ -81,6 +82,7 @@ def display_backtesting(trading_hist: pd.DataFrame, perf_data: pd.DataFrame, dt_
         >>> # 显示可视化看板
         >>> display_backtesting(trading_history, results, dt_column="trade_date")
     """
+    rprint("[cyan]  Starting backtesting visualization...")
     if dt_column not in trading_hist.columns:
         raise ValueError(f"Column {dt_column} not found in trading_hist")
     api = BacktestingView(trading_hist, perf_data, dt_column)

@@ -113,8 +113,8 @@ def cal_metrics(
         "风险价值(VaR)",
         "条件VaR(CVaR)",
         "盈亏比",
-        "平均盈利",
-        "平均亏损",
+        # "平均盈利",
+        # "平均亏损",
         "欧米伽比率",
     ]
 
@@ -134,13 +134,11 @@ def cal_metrics(
         var = qs.stats.value_at_risk(returns)
         cvar = qs.stats.cvar(returns)
         profit_factor = qs.stats.profit_factor(returns)
-        avg_win = returns[returns > 0].mean() if (returns > 0).any() else 0
-        avg_loss = returns[returns < 0].mean() if (returns < 0).any() else 0
         omega = qs.stats.omega(returns)
 
         symbol_results = pd.Series(
             [cumulative_return, max_dd, win_rate, sharpe, calmar, sortino, volatility, var,
-             cvar, profit_factor, avg_win, avg_loss, omega],
+             cvar, profit_factor, omega],
             index=pd.MultiIndex.from_product([[symbol], metrics]),
         )
         results.append(symbol_results)
@@ -170,8 +168,6 @@ def cal_metrics_from_returns(df: pd.DataFrame, dt_column: str = "date") -> pd.Se
         "风险价值(VaR)",
         "条件VaR(CVaR)",
         "盈亏比",
-        "平均盈利",
-        "平均亏损",
         "欧米伽比率",
     ]
 
@@ -189,13 +185,11 @@ def cal_metrics_from_returns(df: pd.DataFrame, dt_column: str = "date") -> pd.Se
         var = qs.stats.value_at_risk(returns)
         cvar = qs.stats.cvar(returns)
         profit_factor = qs.stats.profit_factor(returns)
-        avg_win = returns[returns > 0].mean() if (returns > 0).any() else 0
-        avg_loss = returns[returns < 0].mean() if (returns < 0).any() else 0
         omega = qs.stats.omega(returns)
 
         symbol_results = pd.Series(
             [cumulative_return, max_dd, win_rate, sharpe, calmar, sortino, volatility, var,
-             cvar, profit_factor, avg_win, avg_loss, omega],
+             cvar, profit_factor, omega],
             index=pd.MultiIndex.from_product([[symbol], metrics]),
         )
         results.append(symbol_results)

@@ -101,7 +101,7 @@ def evaluate_strategies(
             strat_trading_histroy = calculate_strategy_returns(
                 df_with_pos, commission_rate, stamp_tax_rate, dt_column
             )
-            metric_series = metric_func(strat_trading_histroy, dt_column=dt_column)
+            metric_series = metric_func(strat_trading_histroy)
             perf_results[strat_name] = metric_series
             strat_trading_histroy["strategy"] = strat_name
             _trading_history_datas.append(strat_trading_histroy)
